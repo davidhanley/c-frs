@@ -1,0 +1,3 @@
+[submodule "TowerRunningRaceData"]
+	path = TowerRunningRaceData
+	url = git@github.com:davidhanley/TowerRunningRaceData.git

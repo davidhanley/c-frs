@@ -14,3 +14,7 @@
   (testing "file reader"
     (let [pf (fn [x] (doall (map println x)))]
            (read-file-into "README.md" pf))))
+
+(deftest test-dir-scanner
+  (testing "dir reader"
+    (is (> (count (scan-directories)) 4))))
