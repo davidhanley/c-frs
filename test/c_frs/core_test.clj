@@ -31,12 +31,22 @@
     (let [ath (athlete-from-row ["1","David Hanley","50","Male"])])))
 
 
+(def aths
+  [{:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "LYNDA LIMERICK", :gender :female, :age 50}
+   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "NICHOLAS WILSON", :gender :male, :age 29}
+   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "JEFF HANGER", :gender :male, :age 56}
+   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "MYKOLA ZAVADA", :gender :male, :age 40}])
+
+(deftest tect-cmp
+  (testing "test compare"
+    (athlete-comp (first aths) (second aths))))
+
+
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-race "TowerRunningRaceData/2021-esbru.csv" #(if % true true))
           first-race (first race)
           ]
-      (doseq [ath race]
-        (println ath))
+      ;(doseq [ath race] (prn ath))
 
       )))

@@ -14,7 +14,6 @@
 (def get-scores-list (memoize get-scores-list-base))
 
 (defn get-gender-from-string [gs]
-  (println gs)
   ({\M :male, \F :female} (first (remove #(= % \*) gs))))
 
 (defn safe-parse-int [str]
@@ -53,14 +52,24 @@
 (defn read-race [fn filter]
   (read-file-into fn #(get-race-from-strings % filter)))
 
+(defn athlete-comp [a1 a2]
+  (let [nc (compare (:athlete-name a1) (:athlete-name a2))]
+    (if (not (zero? nc)) nc
+                         (compare (:age a1) (:age a2)))))
+
+(defn sort-athletes [athletes]
+  (sort athlete-comp athletes))
+
 (defn main-loop []
   (->>
     (scan-directories)
-    (pmap read-race)))
+    (pmap #(read-race % (fn [_] true)))
+    (apply concat)
+    (sort-athletes)))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (main-loop)
+  (println "Athlete count:" (count (main-loop)))
   (shutdown-agents)
   )
