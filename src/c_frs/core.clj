@@ -38,12 +38,11 @@
         scores (get-scores-list-base points)
         header {:race-name (first namestr), :date date :race-points points}
         athletes (map athlete-from-row rest)
-        [g1 g2] (partition-by :sex athletes)
+        partitioned-by-sex (partition-by :sex athletes)
         add-scores-and-rank (fn [a] (map #(conj header %1 {:points %2 :overall-rank (+ 1 %3)}) a scores (range)))
         ]
     (if (and points date (date-filter date))
-      (mapcat add-scores-and-rank [g1 g2])
-      )))
+      (mapcat add-scores-and-rank partitioned-by-sex))))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
@@ -81,24 +80,29 @@
       :else     (<= (abs (- aa ab)) 1))))
 
 (defn partition-athlete [ath-list]
-  (partition-when ages-compatible? ath-list))
+  (let [p (partition-when ages-compatible? ath-list)]
+    (if (> (count p) 1)
+      (println p))
+    p))
+
 
 (defn main-loop []
   (->>
     (scan-directories)
-    (pmap #(read-race % (fn [_] true)))
+    (map #(read-race % (fn [_] true)))
     (apply concat)
     (group-by :name)
+    (map rest)
     (mapcat partition-athlete)
+    ;(map compute-total)
     ))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
   (println "hi, dave!")
-  (doseq [ath (main-loop)]
-    (println ath))
-  (shutdown-agents))
+  ;(shutdown-agents)
+  )
 
 
 
