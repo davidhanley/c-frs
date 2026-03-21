@@ -14,7 +14,7 @@
   (testing "dir reader"
     (is (> (count (scan-directories)) 4))))
 
-(deftest test-gender
+(deftest test-sex
   (testing "see if gender converter works"
     (is (= (get-sex-from-string "M") :male))
     (is (= (get-sex-from-string "F") :female))
@@ -24,6 +24,7 @@
     (is (= (get-sex-from-string "FEMALE") :female))
     (is (= (get-sex-from-string "") nil))
     (is (= (get-sex-from-string "ZZ") nil))
+    (is (= (get-sex-from-string nil) nil))
     ))
 
 (deftest test-athlete-from-row
@@ -46,7 +47,7 @@
     (let [race (read-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" #(if % true true))
           first-race (first race)
           ]
-      (doseq [ath race] (prn ath))
+      ;(doseq [ath race] (prn ath))
 
       )))
 
@@ -60,7 +61,6 @@
 (deftest test-partition
   (testing "see if same-named athletes get separated"
     (let [partitioned-hanleys (partition-athlete hanleys)]
-      (println partitioned-hanleys)
       (is (= (count partitioned-hanleys) 2))
       (is (= partitioned-hanleys [[{:age  30                ; grouped athlete 1
                                     :name "DAVID HANLEY"}]
@@ -76,17 +76,17 @@
 (deftest test-parse-name-and-category
   (testing "Basic cases"
     (is (= (parse-name-and-category "sprint")
-           {:name "sprint"}))
+           {:race-name "sprint"}))
     (is (= (parse-name-and-category "race - sprint")
-           {:name "race" :category "sprint"}))
+           {:race-name "race" :category "sprint"}))
     (is (= (parse-name-and-category "100m hurdles - men")
-           {:name "100m hurdles" :category "men"})))
+           {:race-name "100m hurdles" :category "men"})))
 
   (testing "Extra spaces around dash"
     (is (= (parse-name-and-category "  triathlon  -  olympic  ")
-           {:name "triathlon" :category "olympic"}))
+           {:race-name "triathlon" :category "olympic"}))
     (is (= (parse-name-and-category "swim - 50m butterfly ")
-           {:name "swim" :category "50m butterfly"}))))
+           {:race-name "swim" :category "50m butterfly"}))))
 
 
 
@@ -149,3 +149,68 @@
                     {:race-name "2022 T2T TAMPA" :points 150 :date 1665273600000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
                     {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :points 50 :date 1668124800000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
       (is (= expected (deduplicate-by-race-max-points input))))))
+
+
+;; Helper to create sample race maps
+(defn race2 [points age]
+  {:points-scored points
+   :age    age
+   :name   (str "Race-" (rand-int 1000))})                  ; just for uniqueness
+
+(deftest compute-points-to-use-test
+
+  (testing "real entry that fails"
+    (let [races [{:race-name "US BANK LA 2025", :date 1758585600000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age 52, :points-scored 375/46, :overall-rank 88}
+                 {:race-name "2026 OMAHA VERTICAL MILE", :date 1769904000000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age 53, :points-scored 750/19, :overall-rank 15}
+                 {:race-name "2024 BASE 2 SPACE", :date 1727568000000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age nil, :points-scored 375/16, :overall-rank 28}
+                 {:category "- US CHAMPIONSHIP", :date 1740268800000, :points-scored 625/38, :age 52, :sex :male, :name "DAVID HANLEY", :overall-rank 72, :race-name "2025 HUSTLE", :race-points 250}
+                 {:race-name "2025 WILLIS CLIMB", :date 1762041600000, :race-points 200, :name "DAVID HANLEY", :sex :male, :age 52, :points-scored 10N, :overall-rank 96}
+                 {:race-name "2024 US BANK LA", :date 1727395200000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age 51, :points-scored 250/13, :overall-rank 35} {:race-name "2023 US BANK LA", :date 1695945600000, :race-points 200, :name "DAVID HANLEY", :sex :male, :age 50, :points-scored 1000/49, :overall-rank 45}]
+          result (compute-points-to-use races)]
+      (is (= 681795/6992 (:total result)) "Should sum top 5 points: 100+200+150+300+50")
+      (is (= 53 (:age result)) "Should find max age = 37")
+      (is (= 7 (count (:events result))) "Should keep all events")
+      ))
+
+  (testing "Normal case - more than 5 races, mixed ages"
+    (let [races [(race2 100 35)
+                 (race2 200 nil)
+                 (race2 150 36)
+                 (race2 300 34)
+                 (race2 50 nil)
+                 (race2 400 37)
+                 (race2 80 35)]
+          result (compute-points-to-use races)]
+      (is (= 800 (:total result)) "Should sum top 5 points: 100+200+150+300+50")
+      (is (= 37 (:age result)) "Should find max age = 37")
+      (is (= 7 (count (:events result))) "Should keep all events")))
+
+  (testing "Fewer than 5 races"
+    (let [races [(race2 120 28)
+                 (race2 180 29)
+                 (race2 90 nil)]
+          result (compute-points-to-use races)]
+      (is (= 390 (:total result)) "Should sum all 3")
+      (is (= 29 (:age result)) "Max age among known ages")
+      (is (= 3 (count (:events result))))))
+
+  (testing "All ages are nil → :age should be nil"
+    (let [races [(race2 100 nil)
+                 (race2 200 nil)
+                 (race2 150 nil)]
+          result (compute-points-to-use races)]
+      (is (= 450 (:total result)))
+      (is (nil? (:age result)) "No known ages → :age nil")))
+
+  (testing "Empty input"
+    (let [result (compute-points-to-use [])]
+      (is (= 0 (:total result)) "Sum of no points = 0")
+      (is (nil? (:age result)) "No ages → nil")
+      (is (empty? (:events result)))))
+
+  (testing "Only one race"
+    (let [races [(race2 500 33)]
+          result (compute-points-to-use races)]
+      (is (= 500 (:total result)))
+      (is (= 33 (:age result)))))
+  )

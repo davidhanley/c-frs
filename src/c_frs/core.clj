@@ -14,7 +14,8 @@
 (def get-scores-list (memoize get-scores-list-base))
 
 (defn get-sex-from-string [gs]
-  (some-> (str/replace gs "*" "")
+  (some-> gs
+          (str/replace "*" "")
           first
           Character/toUpperCase
           {\M :male \F :female}))
@@ -85,11 +86,17 @@
       :else (<= (abs (- aa ab)) 1))))
 
 (defn partition-athlete [ath-list]
-  (let [p (partition-when ages-compatible? ath-list)]
-    (if (> (count p) 1)
-      (println p))
-    p))
+  (partition-when ages-compatible? (sort-by :age ath-list) ))
 
+(defn compute-points-to-use [races]
+  {:total  (reduce + (map :points-scored (take 5 races)))
+   :age    (some->> races
+                    (keep :age)
+                    not-empty
+                    (apply max))
+   :events races
+   :name (:name (first races))
+   })
 
 (defn deduplicate-by-race-max-points
   "Returns a vector of unique race results (one per :race-name with the highest :points),
@@ -97,8 +104,8 @@
   [results]
   (->> results
        (group-by :race-name)
-       (map (comp (partial apply max-key :points) val))
-       (sort-by :points >)                                  ;; descending order: highest points first
+       (map (comp (partial apply max-key :points-scored) val))
+       (sort-by :points-scored >)
        vec))
 
 (defn main-loop []
@@ -107,17 +114,18 @@
     (map #(read-race % (fn [_] true)))
     (apply concat)
     (group-by :name)
-    (map rest)
+    (mapcat rest)
     (mapcat partition-athlete)
     (map deduplicate-by-race-max-points)
-    ;(map compute-total)
+    (map compute-points-to-use)                             ;; descending order: highest points first)
     ))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
   (println "hi, dave!")
-  (println (main-loop))
+  (doseq [ae (main-loop)]
+    (prn ae))
   )
 
 
