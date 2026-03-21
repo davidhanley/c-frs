@@ -62,3 +62,19 @@
       (is (= (count partitioned-hanleys) 3)
 
           ))))
+
+
+(deftest test-parse-name-and-category
+  (testing "Basic cases"
+    (is (= (parse-name-and-category "sprint")
+           {:name "sprint"}))
+    (is (= (parse-name-and-category "race - sprint")
+           {:name "race" :category "sprint"}))
+    (is (= (parse-name-and-category "100m hurdles - men")
+           {:name "100m hurdles" :category "men"})))
+
+  (testing "Extra spaces around dash"
+    (is (= (parse-name-and-category "  triathlon  -  olympic  ")
+           {:name "triathlon" :category "olympic"}))
+    (is (= (parse-name-and-category "swim - 50m butterfly ")
+           {:name "swim" :category "50m butterfly"}))))

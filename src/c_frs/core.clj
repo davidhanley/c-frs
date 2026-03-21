@@ -31,16 +31,22 @@
      :age  (safe-parse-int age-str)}))
 
 (def parse-date c/to-long)
+
+(defn parse-name-and-category [s]
+  (zipmap [:race-name :category]
+          (map str/trim (str/split (str/trim s) #"\s*-\s*" 2))))
+
 (defn get-race-from-strings [sheet-strings date-filter]
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
         points (safe-parse-int (first pointsstr))
         scores (get-scores-list-base points)
-        header {:race-name (first namestr), :date date :race-points points}
+        header (conj (parse-name-and-category (first namestr))  {:date date :race-points points})
         athletes (map athlete-from-row rest)
         partitioned-by-sex (partition-by :sex athletes)
         add-scores-and-rank (fn [a] (map #(conj header %1 {:points %2 :overall-rank (+ 1 %3)}) a scores (range)))
         ]
+    (println "header:" header)
     (if (and points date (date-filter date))
       (mapcat add-scores-and-rank partitioned-by-sex))))
 
@@ -92,6 +98,7 @@
     (map #(read-race % (fn [_] true)))
     (apply concat)
     (group-by :name)
+    (group-by :name)
     (map rest)
     (mapcat partition-athlete)
     ;(map compute-total)
@@ -101,6 +108,7 @@
   "I don't do a whole lot ... yet."
   [& args]
   (println "hi, dave!")
+  (println (main-loop))
   ;(shutdown-agents)
   )
 
