@@ -14,7 +14,10 @@
 (def get-scores-list (memoize get-scores-list-base))
 
 (defn get-gender-from-string [gs]
-  ({\M :male, \F :female} (first (remove #(= % \*) gs))))
+  (some-> gs
+          first
+          Character/toUpperCase
+          {\M :male \F :female}))
 
 (defn safe-parse-int [str]
   (try
@@ -22,9 +25,10 @@
     (catch Exception e nil)))
 
 (defn athlete-from-row [row]
-  (let [[_ name age-str gender-str] row
-        parsed-gender (get-gender-from-string gender-str)]
-    (if parsed-gender [{:athlete-name name :gender parsed-gender :age (safe-parse-int age-str)}] nil)))
+  (let [[_ name age-str gender-str] row]
+    {:name name
+     :sex          (get-gender-from-string gender-str)
+     :age          (safe-parse-int age-str)}))
 
 (def parse-date c/to-long)
 (defn get-race-from-strings [sheet-strings date-filter]
@@ -33,11 +37,11 @@
         points (safe-parse-int (first pointsstr))
         header {:race-name (first namestr), :date date :race-points points}]
     (if (and points date (date-filter date))
-      (doall (map #(conj header %) (mapcat athlete-from-row rest)))
-      [])))
+      (map #(conj header %) (map athlete-from-row rest)))))
 
+(def trim-and-upper (comp str/trim str/upper-case))
+(defn clean-line [line] (map trim-and-upper line))
 
-(defn clean-line [line] (map #(str/trim (str/upper-case %)) line))
 (defn read-file-into [filename pfunc]
   (with-open [rdr (clojure.java.io/reader filename)]
     (doall (pfunc (map clean-line (csv/read-csv rdr))))))
@@ -47,18 +51,19 @@
     (clojure.java.io/file "TowerRunningRaceData")
     (file-seq)
     (map str)
-    (filter (fn [x] (clojure.string/ends-with? x ".csv")))))
+    (filter (fn [filename] (str/ends-with? filename ".csv")))))
 
 (defn read-race [fn filter]
   (read-file-into fn #(get-race-from-strings % filter)))
 
 (defn athlete-comp [a1 a2]
-  (let [nc (compare (:athlete-name a1) (:athlete-name a2))]
+  (let [nc (compare (:name a1) (:name a2))]
     (if (not (zero? nc)) nc
                          (compare (:age a1) (:age a2)))))
 
 (defn sort-athletes [athletes]
   (sort athlete-comp athletes))
+
 
 (defn main-loop []
   (->>
@@ -70,6 +75,13 @@
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (println "Athlete count:" (count (main-loop)))
+  (try
+    (for [ath (main-loop)]
+      (println ath))
+    (catch Exception e nil))
   (shutdown-agents)
   )
+
+
+
+
