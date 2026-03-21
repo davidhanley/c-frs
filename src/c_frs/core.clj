@@ -13,8 +13,8 @@
 
 (def get-scores-list (memoize get-scores-list-base))
 
-(defn get-gender-from-string [gs]
-  (some-> gs
+(defn get-sex-from-string [gs]
+  (some-> (str/replace gs "*" "")
           first
           Character/toUpperCase
           {\M :male \F :female}))
@@ -25,19 +25,25 @@
     (catch Exception e nil)))
 
 (defn athlete-from-row [row]
-  (let [[_ name age-str gender-str] row]
+  (let [[_ name age-str sex-str] row]
     {:name name
-     :sex          (get-gender-from-string gender-str)
-     :age          (safe-parse-int age-str)}))
+     :sex  (get-sex-from-string sex-str)
+     :age  (safe-parse-int age-str)}))
 
 (def parse-date c/to-long)
 (defn get-race-from-strings [sheet-strings date-filter]
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
         points (safe-parse-int (first pointsstr))
-        header {:race-name (first namestr), :date date :race-points points}]
+        scores (get-scores-list-base points)
+        header {:race-name (first namestr), :date date :race-points points}
+        athletes (map athlete-from-row rest)
+        [g1 g2] (partition-by :sex athletes)
+        add-scores-and-rank (fn [a] (map #(conj header %1 {:points %2 :overall-rank (+ 1 %3)}) a scores (range)))
+        ]
     (if (and points date (date-filter date))
-      (map #(conj header %) (map athlete-from-row rest)))))
+      (mapcat add-scores-and-rank [g1 g2])
+      )))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
@@ -56,31 +62,44 @@
 (defn read-race [fn filter]
   (read-file-into fn #(get-race-from-strings % filter)))
 
-(defn athlete-comp [a1 a2]
-  (let [nc (compare (:name a1) (:name a2))]
-    (if (not (zero? nc)) nc
-                         (compare (:age a1) (:age a2)))))
+(defn partition-when
+  "Like partition-by but decides split based on consecutive pairs"
+  [should-continue? coll]
+  (reduce
+    (fn [acc x]
+      (if (or (empty? acc)
+              (should-continue? (last (last acc)) x))
+        (update acc (dec (count acc)) conj x)
+        (conj acc [x])))
+    [[(first coll)]]
+    (next coll)))
+(defn ages-compatible? [a b]
+  (let [aa (:age a) ab (:age b)]
+    (cond
+      (nil? aa) true
+      (nil? ab) true
+      :else     (<= (abs (- aa ab)) 1))))
 
-(defn sort-athletes [athletes]
-  (sort athlete-comp athletes))
-
+(defn partition-athlete [ath-list]
+  (partition-when ages-compatible? ath-list))
 
 (defn main-loop []
   (->>
     (scan-directories)
     (pmap #(read-race % (fn [_] true)))
     (apply concat)
-    (sort-athletes)))
+    (group-by :name)
+    (mapcat partition-athlete)
+    ))
 
 (defn -main
   "I don't do a whole lot ... yet."
   [& args]
-  (try
-    (for [ath (main-loop)]
-      (println ath))
-    (catch Exception e nil))
-  (shutdown-agents)
-  )
+  (println "hi, dave!")
+  (doseq [ath (main-loop)]
+    (println ath))
+  (shutdown-agents))
+
 
 
 
