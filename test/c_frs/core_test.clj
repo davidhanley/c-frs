@@ -24,8 +24,7 @@
     (is (= (get-sex-from-string "FEMALE") :female))
     (is (= (get-sex-from-string "") nil))
     (is (= (get-sex-from-string "ZZ") nil))
-    (is (= (get-sex-from-string nil) nil))
-    ))
+    (is (= (get-sex-from-string nil) nil))))
 
 (deftest test-athlete-from-row
   (testing "test athlete from row"
@@ -35,21 +34,17 @@
       (is (= (:sex ath) :male))
       )))
 
-
-(def aths
-  [{:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "LYNDA LIMERICK", :gender :female, :age 50}
-   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "NICHOLAS WILSON", :gender :male, :age 29}
-   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "JEFF HANGER", :gender :male, :age 56}
-   {:race-name "2021 ESBRU", :date 1635292800000, :race-points 200, :athlete-name "MYKOLA ZAVADA", :gender :male, :age 40}])
-
 (deftest test-read-race
   (testing "see if we read a race sanely"
-    (let [race (read-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" #(if % true true))
-          first-race (first race)
+    (let [race (read-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
+          athlete (first race)
           ]
-      ;(doseq [ath race] (prn ath))
+      (is (= (count race) 1245))
+      (is (= (:race-name athlete) "2023 HUSTLE UP THE HANCOCK"))
+      (is (= (:race-points athlete) 150))
 
-      )))
+  )))
+
 
 (def hanleys
   [{:name "DAVID HANLEY" :age 30}
@@ -69,8 +64,7 @@
                                   [{:age  50
                                     :name "DAVID HANLEY"}
                                    {:age  51
-                                    :name "DAVID HANLEY"}]]))
-      )))
+                                    :name "DAVID HANLEY"}]])))))
 
 
 (deftest test-parse-name-and-category
@@ -168,9 +162,8 @@
                  {:race-name "2024 US BANK LA", :date 1727395200000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age 51, :points-scored 250/13, :overall-rank 35} {:race-name "2023 US BANK LA", :date 1695945600000, :race-points 200, :name "DAVID HANLEY", :sex :male, :age 50, :points-scored 1000/49, :overall-rank 45}]
           result (create-athlete-row races)]
       (is (= 681795/6992 (:total result)) "Should sum top 5 points: 100+200+150+300+50")
-      (is (= 53 (:age result)) "Should find max age = 37")
-      (is (= 7 (count (:events result))) "Should keep all events")
-      ))
+      (is (= 53 (:age result)) "Should find max age = 53")
+      (is (= 7 (count (:events result))) "Should keep all events")))
 
   (testing "Normal case - more than 5 races, mixed ages"
     (let [races [(race2 100 35)
@@ -259,15 +252,15 @@
         (is (= {:other :data} (translate {:other :data})))))))
 
 (def sample-athletes
-  [{:name "A" :age 18 :id 1}
-   {:name "B" :age 20 :id 2}
-   {:name "C" :age 29 :id 3}
-   {:name "D" :age 30 :id 4}
-   {:name "E" :age 45 :id 5}
-   {:name "F" :age nil  :id 6}
-   {:name "G" :age 19 :id 7}
-   {:name "H" :age 100 :id 8}
-   {:name "I" :age 200 :id 9}])
+  [{:name "A" :age 18}
+   {:name "B" :age 20}
+   {:name "C" :age 29}
+   {:name "D" :age 30}
+   {:name "E" :age 45}
+   {:name "F" :age nil}
+   {:name "G" :age 19}
+   {:name "H" :age 100}
+   {:name "I" :age 200}])
 
 (deftest filter-ages-test
 
