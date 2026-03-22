@@ -166,7 +166,7 @@
                  {:category "- US CHAMPIONSHIP", :date 1740268800000, :points-scored 625/38, :age 52, :sex :male, :name "DAVID HANLEY", :overall-rank 72, :race-name "2025 HUSTLE", :race-points 250}
                  {:race-name "2025 WILLIS CLIMB", :date 1762041600000, :race-points 200, :name "DAVID HANLEY", :sex :male, :age 52, :points-scored 10N, :overall-rank 96}
                  {:race-name "2024 US BANK LA", :date 1727395200000, :race-points 150, :name "DAVID HANLEY", :sex :male, :age 51, :points-scored 250/13, :overall-rank 35} {:race-name "2023 US BANK LA", :date 1695945600000, :race-points 200, :name "DAVID HANLEY", :sex :male, :age 50, :points-scored 1000/49, :overall-rank 45}]
-          result (compute-points-to-use races)]
+          result (create-athlete-row races)]
       (is (= 681795/6992 (:total result)) "Should sum top 5 points: 100+200+150+300+50")
       (is (= 53 (:age result)) "Should find max age = 37")
       (is (= 7 (count (:events result))) "Should keep all events")
@@ -180,7 +180,7 @@
                  (race2 50 nil)
                  (race2 400 37)
                  (race2 80 35)]
-          result (compute-points-to-use races)]
+          result (create-athlete-row races)]
       (is (= 800 (:total result)) "Should sum top 5 points: 100+200+150+300+50")
       (is (= 37 (:age result)) "Should find max age = 37")
       (is (= 7 (count (:events result))) "Should keep all events")))
@@ -189,7 +189,7 @@
     (let [races [(race2 120 28)
                  (race2 180 29)
                  (race2 90 nil)]
-          result (compute-points-to-use races)]
+          result (create-athlete-row races)]
       (is (= 390 (:total result)) "Should sum all 3")
       (is (= 29 (:age result)) "Max age among known ages")
       (is (= 3 (count (:events result))))))
@@ -198,19 +198,19 @@
     (let [races [(race2 100 nil)
                  (race2 200 nil)
                  (race2 150 nil)]
-          result (compute-points-to-use races)]
+          result (create-athlete-row races)]
       (is (= 450 (:total result)))
       (is (nil? (:age result)) "No known ages → :age nil")))
 
   (testing "Empty input"
-    (let [result (compute-points-to-use [])]
+    (let [result (create-athlete-row [])]
       (is (= 0 (:total result)) "Sum of no points = 0")
       (is (nil? (:age result)) "No ages → nil")
       (is (empty? (:events result)))))
 
   (testing "Only one race"
     (let [races [(race2 500 33)]
-          result (compute-points-to-use races)]
+          result (create-athlete-row races)]
       (is (= 500 (:total result)))
       (is (= 33 (:age result)))))
   )

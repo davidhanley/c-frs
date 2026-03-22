@@ -72,26 +72,30 @@
   <div class="controls">
     <label>Sex:</label>
     <select id="sex">
-      <option value="M">Male</option>
-      <option value="F">Female</option>
+      <option value="male">Male</option>
+      <option value="female">Female</option>
       <!-- add <option value="ALL">All</option> if you have combined files -->
     </select>
 
     <label>Age:</label>
     <select id="age">
-      <option value="U20">Under 20</option>
+      <option value="all">All</option>
+      <option value="0-19">Under 20</option>
       <option value="20-29">20–29</option>
       <option value="30-39">30–39</option>
       <option value="40-49">40–49</option>
       <option value="50-59">50–59</option>
-      <option value="60+">60+</option>
+      <option value="60-69">60–69</option>
+      <option value="70-79">70–79</option>
+      <option value="80-89">80–89</option>
+      <option value="90-99">90–99</option>
       <!-- customize these to match your actual file names -->
     </select>
 
     <label>Foreign:</label>
     <select id="foreign">
-      <option value="local">Local</option>
-      <option value="foreign">Foreign</option>
+      <option value="us-only">US only</option>
+      <option value="all">US and Foreign</option>
       <!-- <option value="all">All</option> if you have it -->
     </select>
   </div>
@@ -142,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentDiv.innerHTML = 
           `<div class="error">
             Could not load ${filename}<br>
-            <small>${err.message}</small>
+            <small>${err}</small>
           </div>`;
       });
   }

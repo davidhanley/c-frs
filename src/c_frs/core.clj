@@ -89,7 +89,7 @@
 (defn partition-athlete [ath-list]
   (partition-when ages-compatible? (sort-by :age ath-list)))
 
-(defn compute-points-to-use [races]
+(defn create-athlete-row [races]
   {:total  (reduce + (map :points-scored (take 5 races)))
    :age    (some->> races
                     (keep :age)
@@ -151,7 +151,7 @@
         (if (contains? foreign-names name)
           (assoc athlete :foreign true)
           athlete)
-        athlete))))                                         ; no name → unchanged
+        athlete))))
 
 (defn compute-overall-result-sheet []
   (->>
@@ -164,8 +164,8 @@
     (mapcat rest)
     (mapcat partition-athlete)
     (map deduplicate-by-race-max-points)
-    (map compute-points-to-use)
-    (vec)                                                   ;; descending order: highest points first)
+    (map create-athlete-row)
+    (vec)
     ))
 
 (defn format-points [points]
@@ -273,6 +273,7 @@
     (doseq [[sex athletes] grouped]
       (let [sorted (sort-by :total > athletes)]
         (print-to-file sorted sex nil true)
+        (print-to-file (remove :foreign sorted) sex nil false)
         (doseq [range age-ranges]
           (let [age-filtered (filter-ages sorted range)]
           (print-to-file age-filtered sex range true)
