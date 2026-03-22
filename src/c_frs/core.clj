@@ -98,6 +98,7 @@
    :events races
    :name   (:name (first races))
    :sex    (:sex (first races))
+   :foreign (:foreign (first races))
    })
 
 (defn deduplicate-by-race-max-points
@@ -150,7 +151,7 @@
         (if (contains? foreign-names name)
           (assoc athlete :foreign true)
           athlete)
-        athlete))))  ; no name → unchanged
+        athlete))))                                         ; no name → unchanged
 
 (defn compute-overall-result-sheet []
   (->>
@@ -256,6 +257,14 @@
 
       (println "Wrote HTML table to" filename "—" (count athletes) "rows"))))
 
+(def age-ranges [[0 19] [20 29] [30 39] [40 49] [50 59] [60 69] [70 79] [80 89] [90 99] [100 200]])
+
+(defn filter-ages [athletes [min-age max-age]]
+  (filter (fn [athlete]
+            (let [age (:age athlete)]
+              (and age (<= age max-age) (>= age min-age))))
+          athletes))
+
 
 (defn -main
   [& args]
@@ -264,6 +273,11 @@
     (doseq [[sex athletes] grouped]
       (let [sorted (sort-by :total > athletes)]
         (print-to-file sorted sex nil true)
+        (doseq [range age-ranges]
+          (let [age-filtered (filter-ages sorted range)]
+          (print-to-file age-filtered sex range true)
+          (print-to-file (remove :foreign age-filtered) sex range false)
+          ))
         ))))
 
 

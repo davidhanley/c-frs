@@ -257,3 +257,71 @@
         (is (= {:name nil} (translate {:name nil})))
         (is (= {} (translate {})))
         (is (= {:other :data} (translate {:other :data})))))))
+
+(def sample-athletes
+  [{:name "A" :age 18 :id 1}
+   {:name "B" :age 20 :id 2}
+   {:name "C" :age 29 :id 3}
+   {:name "D" :age 30 :id 4}
+   {:name "E" :age 45 :id 5}
+   {:name "F" :age nil  :id 6}
+   {:name "G" :age 19 :id 7}
+   {:name "H" :age 100 :id 8}
+   {:name "I" :age 200 :id 9}])
+
+(deftest filter-ages-test
+
+  (testing "standard ranges from age-ranges list"
+    (is (= ["A" "G"]
+           (map :name (filter-ages sample-athletes [0 19])))
+        "0–19 includes 18 and 19")
+
+    (is (= ["B" "C"]
+           (map :name (filter-ages sample-athletes [20 29])))
+        "20–29 includes 20 and 29")
+
+    (is (= ["D"]
+           (map :name (filter-ages sample-athletes [30 39])))
+        "30–39 includes 30")
+
+    (is (= ["E"]
+           (map :name (filter-ages sample-athletes [40 49])))
+        "40–49 includes 45"))
+
+  (testing "boundary behavior (inclusive)"
+    (is (= ["A" "G"]
+           (map :name (filter-ages sample-athletes [18 19])))
+        "exact boundary values are included")
+
+    (is (= ["B"]
+           (map :name (filter-ages sample-athletes [20 20])))
+        "single value range includes exact match"))
+
+  (testing "nil ages are excluded"
+    (is (not-any? #(= (:name %) "F")
+                  (filter-ages sample-athletes [0 19]))
+        "nil age should never match"))
+
+  (testing "high-end ranges"
+    (is (= ["H" "I"]
+           (map :name (filter-ages sample-athletes [100 200])))
+        "100–200 includes 100")
+
+    (is (empty?
+          (filter-ages sample-athletes [101 199]))
+        "nothing matches 101–199"))
+
+  (testing "edge cases"
+    (is (empty? (filter-ages [] [0 19]))
+        "empty collection returns empty")
+
+    (is (empty? (filter-ages [{:name "X" :age nil}] [20 30]))
+        "only nil ages → empty result")
+
+    (is (= ["A"]
+           (map :name (filter-ages [{:name "A" :age 18}] [0 19])))
+        "single matching athlete")
+
+    (is (= ["B"]
+           (map :name (filter-ages [{:name "B" :age 20} {:name "Y" :age nil}] [20 29])))
+        "filters out nil even when others match")))
