@@ -62,13 +62,13 @@
   (testing "see if same-named athletes get separated"
     (let [partitioned-hanleys (partition-athlete hanleys)]
       (is (= (count partitioned-hanleys) 2))
-      (is (= partitioned-hanleys [[{:age  30                ; grouped athlete 1
+      (is (= partitioned-hanleys [[{:age  nil
+                                    :name "DAVID HANLEY"}
+                                   {:age  30
                                     :name "DAVID HANLEY"}]
-                                  [{:age  50                ; grouped athlete 2
+                                  [{:age  50
                                     :name "DAVID HANLEY"}
                                    {:age  51
-                                    :name "DAVID HANLEY"}
-                                   {:age  nil
                                     :name "DAVID HANLEY"}]]))
       )))
 
@@ -92,13 +92,13 @@
 
 ;; Helper to make tests cleaner
 (defn race [name points date & {:keys [age overall-rank]}]
-  {:race-name    name
-   :points       points
-   :date         date
-   :sex          :female
-   :name         "JILL PAHA"
-   :age          age
-   :overall-rank overall-rank})
+  {:race-name     name
+   :points-scored points
+   :date          date
+   :sex           :female
+   :name          "JILL PAHA"
+   :age           age
+   :overall-rank  overall-rank})
 
 ; deduplicate an athlete's races, sorting them by highest to lowest points.
 
@@ -108,8 +108,8 @@
                  (race "2022 T2T TAMPA" 120 1665273700000 :age 41)
                  (race "SCALE THE STRAT" 250 1646611200000 :age 41)
                  (race "SCALE THE STRAT" 200 1646611300000 :age 41)]
-          expected [{:race-name "SCALE THE STRAT" :points 250 :date 1646611200000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
-                    {:race-name "2022 T2T TAMPA" :points 150 :date 1665273600000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
+          expected [{:race-name "SCALE THE STRAT" :points-scored 250 :date 1646611200000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
+                    {:race-name "2022 T2T TAMPA" :points-scored 150 :date 1665273600000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
                     ]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
@@ -117,14 +117,14 @@
     (let [input [(race "WILLIS" 200 1635292800000 :age 40 :overall-rank 1)
                  (race "WILLIS" 180 1635292900000 :age 41 :overall-rank 3)
                  (race "WILLIS" 500/3 1635293000000 :age nil :overall-rank 2)] ;; 166.666... < 200
-          expected [{:race-name "WILLIS" :points 200 :date 1635292800000 :age 40 :sex :female :name "JILL PAHA" :overall-rank 1}]]
+          expected [{:race-name "WILLIS" :points-scored 200 :date 1635292800000 :age 40 :sex :female :name "JILL PAHA" :overall-rank 1}]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
   (testing "Handles ratios correctly (max-key compares them numerically)"
     (let [input [(race "2021 WILLIS" 500/3 1635292800000)   ;; ≈166.67
                  (race "2021 WILLIS" 150 1635292900000)
                  (race "2021 WILLIS" 200 1635293000000)]
-          expected [{:race-name "2021 WILLIS" :points 200 :date 1635293000000 :sex :female :name "JILL PAHA" :age nil :overall-rank nil}]]
+          expected [{:race-name "2021 WILLIS" :points-scored 200 :date 1635293000000 :sex :female :name "JILL PAHA" :age nil :overall-rank nil}]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
   (testing "Empty input and single entry"
@@ -145,17 +145,17 @@
                  (race "SCALE THE STRAT" 250 1646611200000)
                  (race "2022 SOUTHFIELD SINGLE CLIMB" 50 1668124800000)
                  (race "2022 SOUTHFIELD SINGLE CLIMB" 40 1668124900000)]
-          expected [{:race-name "SCALE THE STRAT" :points 250 :date 1646611200000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
-                    {:race-name "2022 T2T TAMPA" :points 150 :date 1665273600000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
-                    {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :points 50 :date 1668124800000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
+          expected [{:race-name "SCALE THE STRAT" :points-scored 250 :date 1646611200000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
+                    {:race-name "2022 T2T TAMPA" :points-scored 150 :date 1665273600000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
+                    {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :points-scored 50 :date 1668124800000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
       (is (= expected (deduplicate-by-race-max-points input))))))
 
 
 ;; Helper to create sample race maps
 (defn race2 [points age]
   {:points-scored points
-   :age    age
-   :name   (str "Race-" (rand-int 1000))})                  ; just for uniqueness
+   :age           age
+   :name          (str "Race-" (rand-int 1000))})           ; just for uniqueness
 
 (deftest compute-points-to-use-test
 
@@ -214,3 +214,46 @@
       (is (= 500 (:total result)))
       (is (= 33 (:age result)))))
   )
+
+(deftest name-translator-test
+  (fn []
+    (let [translate (name-translator-factory)]
+
+      (testing "exact matches"
+        (is (= "CHERYL LEONARD-SCHNECK"
+               (:name (translate {:name "SHERYL LEONARD SCHNECK"}))))
+        (is (= "CHERYL LEONARD-SCHNECK"
+               (:name (translate {:name "SHERYL LEONARD SCHNEC"}))))
+        (is (= "david hanley"
+               (:name (translate {:name "dave hanley"}))))
+        (is (= "robert klinko"
+               (:name (translate {:name "bob klinko"}))))
+        (is (= "SOH WAI CHING"
+               (:name (translate {:name "WAI CHING SOH"})))))
+
+      (testing "wildcard .* matches"
+        (is (= "madeline fontillas-ronk"
+               (:name (translate {:name "madeline ronk"}))))
+        (is (= "madeline fontillas-ronk"
+               (:name (translate {:name "madeline Xronk"}))))
+        (is (= "Natalie DOOLITTLE-shadel"
+               (:name (translate {:name "Natalie DOOLITTLE anything here"}))))
+        (is (= "MARIA ELISA LOPEZ PIMENTEL"
+               (:name (translate {:name "MARIA ELISA LOPEZ P. whatever"}))))
+        (is (= "ARTURO VELAZQUEZ LEYVA"
+               (:name (translate {:name "ARTURO VELAZQUEZ XYZ"})))))
+
+      (testing "prefix/suffix style matches"
+        (is (= "SHERYL LEONARD-SCHNECK"
+               (:name (translate {:name "SHERYL LEONARD-SC extra stuff"})))))
+
+      (testing "no match → name unchanged"
+        (is (= "unknown person"
+               (:name (translate {:name "unknown person"}))))
+        (is (= "Dave Hanley"                                ; different case → no match
+               (:name (translate {:name "Dave Hanley"})))))
+
+      (testing "edge cases"
+        (is (= {:name nil} (translate {:name nil})))
+        (is (= {} (translate {})))
+        (is (= {:other :data} (translate {:other :data})))))))
