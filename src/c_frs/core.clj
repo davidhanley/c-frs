@@ -90,16 +90,11 @@
   (partition-when ages-compatible? (sort-by :age ath-list)))
 
 (defn create-athlete-row [races]
-  {:total  (reduce + (map :points-scored (take 5 races)))
-   :age    (some->> races
-                    (keep :age)
-                    not-empty
-                    (apply max))
-   :events races
-   :name   (:name (first races))
-   :sex    (:sex (first races))
-   :foreign (:foreign (first races))
-   })
+  "create the result row struct, age, total points, name, event, etc"
+  (merge (select-keys (first races) [:name :sex :foreign])
+         {:total  (reduce + (map :points-scored (take 5 races)))
+          :age    (some->> (keep :age races) not-empty (apply max))
+          :events races}))
 
 (defn deduplicate-by-race-max-points
   "Returns a vector of unique race results (one per :race-name with the highest :points),
@@ -111,53 +106,49 @@
        (sort-by :points-scored >)
        vec))
 
+(defn process-lines
+  "Applies f to each non-blank, non-comment line.
+   f receives the trimmed line as string."
+  [filepath f]
+  (with-open [rdr (io/reader filepath)]
+    (->> (line-seq rdr)
+         (remove #(or (str/blank? %) (str/starts-with? % "#")))
+         (map f)
+         doall)))   ; force realization before closing file
 
 (defn name-translator-factory []
-  (let [rules (with-open [rdr (io/reader "TowerRunningRaceData/translate.dat")]
-                (->> (line-seq rdr)
-                     (remove #(or (str/blank? %) (str/starts-with? % "#")))
-                     (keep #(let [[p n] (str/split % #"," 2)]
-                              (when (and p n)
-                                [(re-pattern (str/trim p)) (str/trim n)])))
-                     vec))]
+  (let [rules (process-lines "TowerRunningRaceData/translate.dat"
+                             (fn [line]
+                               (let [[p n] (map str/trim (str/split line #"," 2))]
+                                   [(re-pattern p) n])))]
     (fn [athlete]
-      (if-let [name (:name athlete)]
+      (let [name (:name athlete)]
         (or (some (fn [[re repl]]
                     (when (re-matches re name)
                       (assoc athlete :name repl)))
                   rules)
-            athlete)
-        athlete))))
+            athlete)))))
 
 (def one-year-ago
   (t/minus (t/now) (t/years 1)))
 
-(defn recent-enough? [dt]
-  (t/after? (c/from-long dt) one-year-ago))
+(defn recent-enough? [race-date]
+  (t/after? (c/from-long race-date) one-year-ago))
 
-(defn foreign-marker-factory
+(defn foreign-marker-factory []
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    adds :foreign true to athletes whose :name exactly matches a line in the file."
-  []
-  (let [foreign-names
-        (with-open [rdr (io/reader "TowerRunningRaceData/foreign.dat")]
-          (->> (line-seq rdr)
-               (remove #(or (str/blank? %) (str/starts-with? % "#")))
-               (map str/trim)
-               (into #{})))]
-
-    (fn mark-foreign [athlete]
-      (if-let [name (:name athlete)]
-        (if (contains? foreign-names name)
-          (assoc athlete :foreign true)
-          athlete)
+  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
+                                     (fn [line] (str/trim line))))]
+    (fn [athlete]
+      (if (contains? foreign-names (:name athlete))
+        (assoc athlete :foreign true)
         athlete))))
 
 (defn compute-overall-result-sheet []
   (->>
     (scan-directories)
-    (map #(read-race % recent-enough?))
-    (apply concat)
+    (mapcat #(read-race % recent-enough?))
     (map (name-translator-factory))
     (map (foreign-marker-factory))
     (group-by :name)
@@ -165,8 +156,7 @@
     (mapcat partition-athlete)
     (map deduplicate-by-race-max-points)
     (map create-athlete-row)
-    (vec)
-    ))
+    (vec)))
 
 (defn format-points [points]
   (format "%.2f" (double points)))
@@ -265,7 +255,6 @@
               (and age (<= age max-age) (>= age min-age))))
           athletes))
 
-
 (defn -main
   [& args]
   (let [overall-results (compute-overall-result-sheet)
@@ -276,10 +265,8 @@
         (print-to-file (remove :foreign sorted) sex nil false)
         (doseq [range age-ranges]
           (let [age-filtered (filter-ages sorted range)]
-          (print-to-file age-filtered sex range true)
-          (print-to-file (remove :foreign age-filtered) sex range false)
-          ))
-        ))))
+            (print-to-file age-filtered sex range true)
+            (print-to-file (remove :foreign age-filtered) sex range false)))))))
 
 
 
