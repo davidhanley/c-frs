@@ -49,7 +49,7 @@
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points})
         athletes (map athlete-from-row rest)
         {:keys [male female]} (group-by :sex athletes)
-        add-scores-and-rank (fn [a] (map #(conj header %1 {:points-scored %2 :overall-rank (+ 1 %3)}) a scores (range)))
+        add-scores-and-rank (fn [a] (map #(conj header %1 {:points-scored %2 :overall-rank (inc %3)}) a scores (range)))
         ]
     (if (and points date (date-filter date))
       (mapcat add-scores-and-rank [male female]))))
@@ -82,6 +82,7 @@
         (conj acc [x])))
     [[(first coll)]]
     (next coll)))
+
 (defn ages-compatible? [a b]
   (let [aa (:age a) ab (:age b)]
     (cond
@@ -142,7 +143,7 @@
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    adds :foreign true to athletes whose :name exactly matches a line in the file."
   (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
-                                          (fn [line] (str/trim line))))]
+                                          (fn [line] (str/upper-case (str/trim line)))))]
     (fn [athlete]
       (if (contains? foreign-names (:name athlete))
         (assoc athlete :foreign true)
@@ -163,6 +164,14 @@
 
 (defn format-points [points]
   (format "%.2f" (double points)))
+
+(defn name-and-category
+  "Returns 'Race Name' or 'Race Name - Category' if category exists."
+  [entry]
+  (if-let [category (:category entry)]
+    (str (:race-name entry) " - <br>" category)
+    (:race-name entry)))
+
 (defn print-to-file
   "Writes athletes to an HTML file as a simple table.
    One row per athlete: name | age | total points | event1 | event2 | event3 | ...
@@ -191,9 +200,8 @@
                    " — " (if foreign? "All Countries" "US Only"))]
 
     (with-open [w (io/writer filename)]
-      (let [write (fn [& strings]
-                    (let [final-str (apply str strings)]
-                      (.write w (str final-str ""))))]
+      (let [write (fn [& tokens]
+                    (.write w (clojure.string/join (map str tokens)))) ]
         ;; Header + basic styling
         (write "<!DOCTYPE html>\n<html lang=\"en\">\n<head>")
         (write "  <meta charset=\"UTF-8\">")
@@ -210,7 +218,7 @@
         (write "  </style>\n</head>\n<body>")
 
         (write "  <h1>" title "</h1>")
-        (write "  <p>Generated: " (str (java.time.LocalDateTime/now)) " — " (count athletes) " athletes</p>")
+        (write "  <p>Generated: " (java.time.LocalDateTime/now) " — " (count athletes) " athletes</p>")
 
         (write "  <table>")
         (write "    <thead>\n      <tr>")
@@ -221,7 +229,7 @@
         ;; We don't know max events in advance → we just write "Event 1", "Event 2", ...
         ;; You could compute max events first if you want fixed column headers
         (dotimes [i 10]                                     ; assume max ~10 events is reasonable
-          (write (str "        <th>Event " (inc i) "</th>")))
+          (write "        <th>Event " (inc i) "</th>"))
         (write "      </tr>\n    </thead>")
         (write "    <tbody>")
 
@@ -232,17 +240,17 @@
                 total (format-points (:total athlete))
                 events (:events athlete)
                 event-cells (map (fn [ev]
-                                   (str (:race-name ev)
+                                   (str (name-and-category ev)
                                         " <hr> Points: " (format-points (:points-scored ev)) " <br>rank " (:overall-rank ev)))
                                  events)]
             (write "      <tr>")
-            (write (str "        <td>" (str/escape (str (+ 1 idx) ". " name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>"))
-            (write (str "        <td>" age "</td>"))
-            (write (str "        <td class=\"points\">" total "</td>"))
+            (write "        <td>" (str/escape (str (inc idx) ". " name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
+            (write "        <td>" age "</td>")
+            (write "        <td class=\"points\">" total "</td>")
 
             ;; Event columns — pad with empty cells if fewer than 10 events
             (doseq [cell (concat event-cells (repeat 10 ""))]
-              (write (str "        <td>" (or cell "") "</td>")))
+              (write "        <td>" (or cell "") "</td>"))
             (write "      </tr>")))
 
         (write "    </tbody>\n  </table>")
