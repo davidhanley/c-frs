@@ -7,11 +7,14 @@
          '[clojure.java.io :as io]
          '[clj-time.core :as t])
 
-(def fractions (map #(/ 5 (+ 5 %)) (range)))
+(def fractions
+  "an infinite series of fractions, of the form 5/5 5/6 5/7 5/8 ..."
+  (map #(/ 5 (+ 5 %)) (range)))
 
-(defn get-scores-list-base [base]
+(defn get-scores-list-base
+  "uses the fractions above to make an infinite points list, multiplying the points by the fractions"
+  [base]
   (map #(* % base) fractions))
-
 (def get-scores-list (memoize get-scores-list-base))
 
 (defn get-sex-from-string [gs]
@@ -23,8 +26,8 @@
 
 (defn safe-parse-int [str]
   (try
-    (Integer/parseInt str)
-    (catch Exception e nil)))
+    (some-> str clojure.string/trim Long/parseLong)
+    (catch NumberFormatException _ nil)))
 
 (defn athlete-from-row [row]
   (let [[_ name age-str sex-str] row]
@@ -42,7 +45,7 @@
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
         points (safe-parse-int (first pointsstr))
-        scores (get-scores-list-base points)
+        scores (get-scores-list points)
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points})
         athletes (map athlete-from-row rest)
         {:keys [male female]} (group-by :sex athletes)
@@ -114,13 +117,13 @@
     (->> (line-seq rdr)
          (remove #(or (str/blank? %) (str/starts-with? % "#")))
          (map f)
-         doall)))   ; force realization before closing file
+         doall)))                                           ; force realization before closing file
 
 (defn name-translator-factory []
   (let [rules (process-lines "TowerRunningRaceData/translate.dat"
                              (fn [line]
                                (let [[p n] (map str/trim (str/split line #"," 2))]
-                                   [(re-pattern p) n])))]
+                                 [(re-pattern p) n])))]
     (fn [athlete]
       (let [name (:name athlete)]
         (or (some (fn [[re repl]]
@@ -139,7 +142,7 @@
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    adds :foreign true to athletes whose :name exactly matches a line in the file."
   (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
-                                     (fn [line] (str/trim line))))]
+                                          (fn [line] (str/trim line))))]
     (fn [athlete]
       (if (contains? foreign-names (:name athlete))
         (assoc athlete :foreign true)
@@ -179,7 +182,7 @@
 
         ;; filename without extension
         base-name (str/join "-" [sex-str age-str foreign-str])
-        filename (str base-name ".html")
+        filename (str "content/" base-name ".html")
 
         title (str (str/capitalize sex-str) " — "
                    (if age-range
