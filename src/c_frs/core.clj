@@ -83,12 +83,12 @@
     [[(first coll)]]
     (next coll)))
 
-(defn ages-compatible? [a b]
-  (let [aa (:age a) ab (:age b)]
+(defn ages-compatible? [athlete1 athlete2]
+  (let [age1 (:age athlete1) age2 (:age athlete2)]
     (cond
-      (nil? aa) true
-      (nil? ab) true
-      :else (<= (abs (- aa ab)) 1))))
+      (nil? age1) true
+      (nil? age2) true
+      :else (<= (abs (- age1 age2)) 1))))
 
 (defn partition-athlete [ath-list]
   (partition-when ages-compatible? (sort-by :age ath-list)))
@@ -123,8 +123,8 @@
 (defn name-translator-factory []
   (let [rules (process-lines "TowerRunningRaceData/translate.dat"
                              (fn [line]
-                               (let [[p n] (map str/trim (str/split line #"," 2))]
-                                 [(re-pattern p) n])))]
+                               (let [[pattern name] (map str/trim (str/split line #"," 2))]
+                                 [(re-pattern pattern) name])))]
     (fn [athlete]
       (let [name (:name athlete)]
         (or (some (fn [[re repl]]
@@ -152,7 +152,8 @@
 (defn compute-overall-result-sheet []
   (->>
     (scan-directories)
-    (mapcat #(read-race % recent-enough?))
+    (pmap #(read-race % recent-enough?))
+    (apply concat)
     (map (name-translator-factory))
     (map (foreign-marker-factory))
     (group-by :name)
@@ -183,7 +184,7 @@
   [athletes sex age-range foreign?]
   (let [sex-str (case sex :male "male" :female "female" (name sex))
 
-        age-str (if (and age-range (vector? age-range))
+        age-str (if (vector? age-range)
                   (str (first age-range) "-" (second age-range))
                   "all")
 
@@ -201,7 +202,7 @@
 
     (with-open [w (io/writer filename)]
       (let [write (fn [& tokens]
-                    (.write w (clojure.string/join (map str tokens)))) ]
+                    (.write w (clojure.string/join (map str tokens))))]
         ;; Header + basic styling
         (write "<!DOCTYPE html>\n<html lang=\"en\">\n<head>")
         (write "  <meta charset=\"UTF-8\">")
@@ -235,8 +236,8 @@
 
         ;; One row per athlete
         (doseq [[idx athlete] (map-indexed vector athletes)]
-          (let [name (or (:name athlete) "—")
-                age (or (:age athlete) "—")
+          (let [name (:name athlete)
+                age (or (:age athlete) "N/A")
                 total (format-points (:total athlete))
                 events (:events athlete)
                 event-cells (map (fn [ev]
@@ -258,6 +259,10 @@
 
       (println "Wrote HTML table to" filename "—" (count athletes) "rows"))))
 
+(defn print-both-to-file [athletes sex age-range]
+  (print-to-file athletes sex age-range true)
+  (print-to-file (remove :foreign athletes) sex age-range false))
+
 (def age-ranges [[0 19] [20 29] [30 39] [40 49] [50 59] [60 69] [70 79] [80 89] [90 99] [100 200]])
 
 (defn filter-ages [athletes [min-age max-age]]
@@ -272,12 +277,9 @@
         grouped (group-by :sex overall-results)]
     (doseq [[sex athletes] grouped]
       (let [sorted (sort-by :total > athletes)]
-        (print-to-file sorted sex nil true)
-        (print-to-file (remove :foreign sorted) sex nil false)
+        (print-both-to-file sorted sex nil)
         (doseq [range age-ranges]
-          (let [age-filtered (filter-ages sorted range)]
-            (print-to-file age-filtered sex range true)
-            (print-to-file (remove :foreign age-filtered) sex range false)))))))
+          (print-both-to-file (filter-ages sorted range) sex range))))))
 
 
 
