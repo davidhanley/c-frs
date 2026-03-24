@@ -248,7 +248,7 @@
         (write "    <tbody>")
 
         ;; One row per athlete
-        (doseq [[idx athlete] (map-indexed vector (add-row-ranks athletes))]
+        (doseq [athlete (add-row-ranks athletes)]
           (let [name (:name athlete)
                 age (or (:age athlete) "N/A")
                 total (format-points (:total athlete))
