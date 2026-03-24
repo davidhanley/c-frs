@@ -43,7 +43,7 @@
       (is (= (:race-name athlete) "2023 HUSTLE UP THE HANCOCK"))
       (is (= (:race-points athlete) 150))
 
-  )))
+      )))
 
 
 (def hanleys
@@ -263,7 +263,6 @@
    {:name "I" :age 200}])
 
 (deftest filter-ages-test
-
   (testing "standard ranges from age-ranges list"
     (is (= ["A" "G"]
            (map :name (filter-ages sample-athletes [0 19])))
@@ -318,3 +317,48 @@
     (is (= ["B"]
            (map :name (filter-ages [{:name "B" :age 20} {:name "Y" :age nil}] [20 29])))
         "filters out nil even when others match")))
+
+(deftest test-add-standard-ranks
+  (testing "Standard 1224 ranking cases"
+
+    (testing "Mixed ties – 1, then 3-way tie, then 2-way tie, then singles"
+      (let [athletes [{:name "A" :total 100}
+                      {:name "B" :total 90}
+                      {:name "C" :total 90}
+                      {:name "D" :total 90}
+                      {:name "E" :total 80}
+                      {:name "F" :total 80}
+                      {:name "G" :total 70}
+                      {:name "H" :total 50}]
+            sorted   (sort-by :total > athletes)
+            ranked   (add-row-ranks sorted)
+            ranks    (map :index ranked)]
+        (is (= [1 2 2 2 5 5 7 8] ranks))))
+
+    (testing "All unique → straight 1,2,3,4…"
+      (let [athletes (map #(hash-map :name (str "P" %) :total (- 100 %)) (range 1 6))
+            ranks    (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (= [1 2 3 4 5] ranks))))
+
+    (testing "All athletes tied → everyone gets rank 1"
+      (let [athletes (repeat 5 {:name "Tied" :total 88})
+            ranks    (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (every? #{1} ranks))))
+
+    (testing "Three-way tie at the top → next is 4th"
+      (let [athletes [{:name "Gold1" :total 95}
+                      {:name "Gold2" :total 95}
+                      {:name "Gold3" :total 95}
+                      {:name "4th"   :total 90}
+                      {:name "5th"   :total 85}]
+            ranks    (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (= [1 1 1 4 5] ranks))))
+
+    (testing "Single athlete"
+      (is (= [1] (->> [{:name "Solo" :total 42}]
+                      (sort-by :total >)
+                      add-row-ranks
+                      (map :index)))))
+
+    (testing "Empty list → empty result"
+      (is (= [] (add-row-ranks []))))))

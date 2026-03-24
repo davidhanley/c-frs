@@ -152,10 +152,9 @@
 (defn compute-overall-result-sheet []
   (->>
     (scan-directories)
-    (pmap #(read-race % recent-enough?))
+    (map #(read-race % recent-enough?))
     (apply concat)
-    (map (name-translator-factory))
-    (map (foreign-marker-factory))
+    (map (comp (foreign-marker-factory) (name-translator-factory)))
     (group-by :name)
     (mapcat rest)
     (mapcat partition-athlete)
@@ -172,6 +171,20 @@
   (if-let [category (:category entry)]
     (str (:race-name entry) " - <br>" category)
     (:race-name entry)))
+
+
+
+(defn add-row-ranks [sorted-athletes]
+  (->>
+    sorted-athletes
+    (map (fn [a i] (assoc i :index a)) (rest (range)))
+    (reduce
+      (fn [acc ath]
+        (cons
+            (if (= (:total ath) (:total (first acc)))
+              (assoc ath :tie? true :index (:index (first acc)))
+              ath) acc)) nil)
+    (reverse)))
 
 (defn print-to-file
   "Writes athletes to an HTML file as a simple table.
@@ -202,7 +215,7 @@
 
     (with-open [w (io/writer filename)]
       (let [write (fn [& tokens]
-                    (.write w (clojure.string/join (map str tokens))))]
+                    (.write w (clojure.string/join (map str tokens))) )]
         ;; Header + basic styling
         (write "<!DOCTYPE html>\n<html lang=\"en\">\n<head>")
         (write "  <meta charset=\"UTF-8\">")
@@ -235,7 +248,7 @@
         (write "    <tbody>")
 
         ;; One row per athlete
-        (doseq [[idx athlete] (map-indexed vector athletes)]
+        (doseq [[idx athlete] (map-indexed vector (add-row-ranks athletes))]
           (let [name (:name athlete)
                 age (or (:age athlete) "N/A")
                 total (format-points (:total athlete))
@@ -245,7 +258,7 @@
                                         " <hr> Points: " (format-points (:points-scored ev)) " <br>rank " (:overall-rank ev)))
                                  events)]
             (write "      <tr>")
-            (write "        <td>" (str/escape (str (inc idx) ". " name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
+            (write "        <td>" (str/escape (str (:index athlete) ". " name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
             (write "        <td>" age "</td>")
             (write "        <td class=\"points\">" total "</td>")
 
