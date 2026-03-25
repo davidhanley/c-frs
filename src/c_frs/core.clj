@@ -35,7 +35,7 @@
      :sex  (get-sex-from-string sex-str)
      :age  (safe-parse-int age-str)}))
 
-(def parse-date c/to-long)
+(def parse-date c/from-string)
 
 (defn parse-name-and-category [s]
   (zipmap [:race-name :category]
@@ -49,7 +49,7 @@
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points})
         athletes (map athlete-from-row rest)
         {:keys [male female]} (group-by :sex athletes)
-        add-scores-and-rank (fn [a] (map #(conj header %1 {:points-scored %2 :overall-rank (inc %3)}) a scores (range)))
+        add-scores-and-rank (fn [a] (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) a scores (range)))
         ]
     (if (and points date (date-filter date))
       (mapcat add-scores-and-rank [male female]))))
@@ -105,7 +105,7 @@
    sorted by points in descending order (best performance first)."
   [results]
   (->> results
-       (group-by :race-name)
+       (group-by (fn [result] (:race-name (:header result))))
        (map (comp (partial apply max-key :points-scored) val))
        (sort-by :points-scored >)
        vec))
@@ -137,7 +137,7 @@
   (t/minus (t/now) (t/years 1)))
 
 (defn recent-enough? [race-date]
-  (t/after? (c/from-long race-date) one-year-ago))
+  (t/after? race-date one-year-ago))
 
 (defn foreign-marker-factory []
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
@@ -168,9 +168,11 @@
 (defn name-and-category
   "Returns 'Race Name' or 'Race Name - Category' if category exists."
   [entry]
-  (if-let [category (:category entry)]
-    (str (:race-name entry) " - <br>" category)
-    (:race-name entry)))
+  (let [header (:header entry)
+           category (:category header)]
+    (if category
+    (str (:race-name header) " - <br>" category)
+    (:race-name header))))
 
 
 (def c1 "#d8dbff")
