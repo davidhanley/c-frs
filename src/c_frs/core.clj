@@ -173,17 +173,20 @@
     (:race-name entry)))
 
 
-
+(def c1 "#d8dbff")
+(def c2 "#fdf4f8")
 (defn add-row-ranks [sorted-athletes]
   (->>
     sorted-athletes
     (map (fn [a i] (assoc i :index a)) (rest (range)))
     (reduce
       (fn [acc ath]
+        (let [prev (first acc)
+              same-points (= (:total ath) (:total prev))]
         (cons
-            (if (= (:total ath) (:total (first acc)))
-              (assoc ath :tie? true :index (:index (first acc)))
-              ath) acc)) nil)
+            (if same-points
+              (assoc ath :tie? true :index (:index prev) :color (or (:color prev) :blue))
+              (assoc ath :color ( {c1 c2 c2 c1 nil c1} (:color prev)))) acc))) nil)
     (reverse)))
 
 (defn print-to-file
@@ -249,16 +252,17 @@
 
         ;; One row per athlete
         (doseq [athlete (add-row-ranks athletes)]
-          (let [name (:name athlete)
+          (let [athlete-name (:name athlete)
                 age (or (:age athlete) "N/A")
                 total (format-points (:total athlete))
                 events (:events athlete)
+                color (name (:color athlete))
                 event-cells (map (fn [ev]
                                    (str (name-and-category ev)
                                         " <hr> Points: " (format-points (:points-scored ev)) " <br>rank " (:overall-rank ev)))
                                  events)]
-            (write "      <tr>")
-            (write "        <td>" (str/escape (str (:index athlete) ". " name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
+            (write "      <tr style=\"background-color:" color ";\">")
+            (write "        <td>" (str/escape (str (:index athlete) ". " athlete-name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
             (write "        <td>" age "</td>")
             (write "        <td class=\"points\">" total "</td>")
 
