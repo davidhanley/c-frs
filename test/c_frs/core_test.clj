@@ -365,3 +365,25 @@
 
     (testing "Empty list → empty result"
       (is (= [] (add-row-ranks []))))))
+(deftest test-dedupe-athletes
+  (testing "keeps first occurrence of each name and preserves order"
+    (let [athletes [{:name "Alice" :sex :female :age 25 :points-scored 1200}
+                    {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
+                    {:name "Alice" :sex :female :age 25 :points-scored 1350}  ; duplicate, should be dropped
+                    {:name "Charlie" :sex :male :age 28 :points-scored 900}
+                    {:name "Bob"   :sex :male   :age 30 :points-scored 950}   ; duplicate
+                    {:name "Diana" :sex :female :age 22 :points-scored 1400}]]
+
+      (is (= [{:name "Alice" :sex :female :age 25 :points-scored 1200}
+              {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
+              {:name "Charlie" :sex :male :age 28 :points-scored 900}
+              {:name "Diana" :sex :female :age 22 :points-scored 1400}]
+             (dedupe-athletes athletes)))))
+
+  (testing "handles empty list"
+    (is (= [] (dedupe-athletes []))))
+
+  (testing "handles no duplicates"
+    (let [athletes [{:name "Alice" :sex :female}
+                    {:name "Bob"   :sex :male}]]
+      (is (= athletes (dedupe-athletes athletes))))))

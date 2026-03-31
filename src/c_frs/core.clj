@@ -7,7 +7,8 @@
          '[clojure.string :as str]
          '[clojure.data.csv :as csv]
          '[clojure.java.io :as io]
-         '[clj-time.core :as t])
+         '[clj-time.core :as t]
+         '[clj-time.format :as f])
 
 (def fractions
   "an infinite series of fractions, of the form 5/5 5/6 5/7 5/8 ..."
@@ -46,6 +47,20 @@
 (defn to-url [fn]
   (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/" (last (str/split fn #"/"))))
 
+(defn dedupe-athletes
+  "Returns a sequence of athletes with duplicate names removed.
+   Keeps the first occurrence of each name (preserves original order)."
+  [athletes]
+  (:result  (reduce (fn [acc athlete]
+            (let [name (:name athlete)]
+              (if (contains? (:seen acc) name)
+                acc
+                (-> acc
+                    (update :result conj athlete)
+                    (update :seen conj name)))))
+          {:result [] :seen #{}}
+          athletes)))
+
 (defn get-race-from-strings [sheet-strings date-filter filename]
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
@@ -53,7 +68,7 @@
         scores (get-scores-list points)
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})
         athletes (map athlete-from-row rest)
-        {:keys [male female]} (group-by :sex athletes)
+        {:keys [male female]} (group-by :sex (dedupe-athletes athletes))
         add-scores-and-rank (fn [a] (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) a scores (range)))
         ]
     (if (and points date (date-filter date))
@@ -182,10 +197,11 @@
 
 (defn write-races-considered [races]
   (let [title "Races Considered"
+        date-formatter (f/formatter "yyyy-MM-dd")
         _results (keep :header (map first races))
         sorted-results
         (->> _results
-             (sort-by :date t/after?)) ]
+             (sort-by :date t/after?))]
     (with-open [w (io/writer "content/races-considered.html")]
       (let [html-content
             (h/html
@@ -201,13 +217,16 @@
                  [:th "Points"]]]
                [:tbody
                 (for [race sorted-results]
-                  (let [name  (name-and-category race)
-                        date  (:date race)
+                  (let [name (name-and-category race)
+                        date (:date race)
+                        date-str (if date
+                                            (f/unparse date-formatter date)
+                                            "N/A")
                         points (:race-points race)
-                        url   (:url race)]
+                        url (:url race)]
                     [:tr
                      [:td [:a {:href url} name]]
-                     [:td date]
+                     [:td date-str]
                      [:td.points points]]))]])]
         (.write w html-content)))
     (println "Wrote races-considered.html with" (count sorted-results) "races"))
@@ -243,10 +262,10 @@
       (fn [acc ath]
         (let [prev (first acc)
               same-points (= (:total ath) (:total prev))]
-        (cons
+          (cons
             (if same-points
               (assoc ath :tie? true :index (:index prev) :color (or (:color prev) :blue))
-              (assoc ath :color ( {c1 c2 c2 c1 nil c1} (:color prev)))) acc))) nil)
+              (assoc ath :color ({c1 c2 c2 c1 nil c1} (:color prev)))) acc))) nil)
     (reverse)))
 
 
@@ -255,20 +274,20 @@
 (defn print-to-file
   "Writes athletes to an HTML file as a simple table using Hiccup."
   [athletes sex age-range foreign?]
-  (let [sex-str     (case sex :male "male" :female "female" (name sex))
-        age-str     (if (vector? age-range)
-                      (str (first age-range) "-" (second age-range))
-                      "all")
+  (let [sex-str (case sex :male "male" :female "female" (name sex))
+        age-str (if (vector? age-range)
+                  (str (first age-range) "-" (second age-range))
+                  "all")
         foreign-str (if foreign? "all" "us-only")
 
-        base-name   (str/join "-" [sex-str age-str foreign-str])
-        filename    (str "content/" base-name ".html")
+        base-name (str/join "-" [sex-str age-str foreign-str])
+        filename (str "content/" base-name ".html")
 
-        title       (str (str/capitalize sex-str) " — "
-                         (if age-range
-                           (str "Ages " (first age-range) "–" (second age-range))
-                           "All Ages")
-                         " — " (if foreign? "All Countries" "US Only"))]
+        title (str (str/capitalize sex-str) " — "
+                   (if age-range
+                     (str "Ages " (first age-range) "–" (second age-range))
+                     "All Ages")
+                   " — " (if foreign? "All Countries" "US Only"))]
 
     (with-open [w (io/writer filename)]
       (let [html-content
@@ -291,17 +310,17 @@
                [:tbody
                 (for [athlete (add-row-ranks athletes)]
                   (let [athlete-name (:name athlete)
-                        age          (or (:age athlete) "N/A")
-                        total        (format-points (:total athlete))
-                        events       (:events athlete)
-                        color        (name (:color athlete))
-                        event-cells  (map (fn [ev]
-                                            [:div
-                                             (name-and-category (:header ev))
-                                             [:hr]
-                                             "Points: " (format-points (:points-scored ev))
-                                             [:br] "rank " (:overall-rank ev)])
-                                          events)]
+                        age (or (:age athlete) "N/A")
+                        total (format-points (:total athlete))
+                        events (:events athlete)
+                        color (name (:color athlete))
+                        event-cells (map (fn [ev]
+                                           [:div
+                                            (name-and-category (:header ev))
+                                            [:hr]
+                                            "Points: " (format-points (:points-scored ev))
+                                            [:br] "rank " (:overall-rank ev)])
+                                         events)]
                     [:tr {:style (str "background-color:" color ";")}
                      [:td (str/escape (str (:index athlete) ". " athlete-name)
                                       {\& "&amp;" \< "&lt;" \> "&gt;"})]
