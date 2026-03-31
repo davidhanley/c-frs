@@ -38,12 +38,13 @@
   (testing "see if we read a race sanely"
     (let [race (read-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
           athlete (first race)
+          header (:header athlete)
           ]
       (is (= (count race) 1245))
-      (is (= (:race-name athlete) "2023 HUSTLE UP THE HANCOCK"))
-      (is (= (:race-points athlete) 150))
+      (is (= (:race-name header) "2023 HUSTLE UP THE HANCOCK"))
+      (is (= (:race-points header) 150))
 
-  )))
+      )))
 
 
 (def hanleys
@@ -86,9 +87,11 @@
 
 ;; Helper to make tests cleaner
 (defn race [name points date & {:keys [age overall-rank]}]
-  {:race-name     name
+  {:header        {
+                   :race-name name
+                   :date      date
+                   }
    :points-scored points
-   :date          date
    :sex           :female
    :name          "JILL PAHA"
    :age           age
@@ -102,8 +105,8 @@
                  (race "2022 T2T TAMPA" 120 1665273700000 :age 41)
                  (race "SCALE THE STRAT" 250 1646611200000 :age 41)
                  (race "SCALE THE STRAT" 200 1646611300000 :age 41)]
-          expected [{:race-name "SCALE THE STRAT" :points-scored 250 :date 1646611200000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
-                    {:race-name "2022 T2T TAMPA" :points-scored 150 :date 1665273600000 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
+          expected [{:header {:race-name "SCALE THE STRAT" :date 1646611200000} :points-scored 250 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
+                    {:header {:race-name "2022 T2T TAMPA" :date 1665273600000} :points-scored 150 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
                     ]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
@@ -111,14 +114,14 @@
     (let [input [(race "WILLIS" 200 1635292800000 :age 40 :overall-rank 1)
                  (race "WILLIS" 180 1635292900000 :age 41 :overall-rank 3)
                  (race "WILLIS" 500/3 1635293000000 :age nil :overall-rank 2)] ;; 166.666... < 200
-          expected [{:race-name "WILLIS" :points-scored 200 :date 1635292800000 :age 40 :sex :female :name "JILL PAHA" :overall-rank 1}]]
+          expected [{:header {:race-name "WILLIS" :date 1635292800000} :points-scored 200 :age 40 :sex :female :name "JILL PAHA" :overall-rank 1}]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
   (testing "Handles ratios correctly (max-key compares them numerically)"
     (let [input [(race "2021 WILLIS" 500/3 1635292800000)   ;; ≈166.67
                  (race "2021 WILLIS" 150 1635292900000)
                  (race "2021 WILLIS" 200 1635293000000)]
-          expected [{:race-name "2021 WILLIS" :points-scored 200 :date 1635293000000 :sex :female :name "JILL PAHA" :age nil :overall-rank nil}]]
+          expected [{:header {:race-name "2021 WILLIS" :date 1635293000000} :points-scored 200 :sex :female :name "JILL PAHA" :age nil :overall-rank nil}]]
       (is (= expected (deduplicate-by-race-max-points input)))))
 
   (testing "Empty input and single entry"
@@ -139,9 +142,9 @@
                  (race "SCALE THE STRAT" 250 1646611200000)
                  (race "2022 SOUTHFIELD SINGLE CLIMB" 50 1668124800000)
                  (race "2022 SOUTHFIELD SINGLE CLIMB" 40 1668124900000)]
-          expected [{:race-name "SCALE THE STRAT" :points-scored 250 :date 1646611200000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
-                    {:race-name "2022 T2T TAMPA" :points-scored 150 :date 1665273600000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
-                    {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :points-scored 50 :date 1668124800000 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
+          expected [{:header {:race-name "SCALE THE STRAT" :date 1646611200000} :points-scored 250 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
+                    {:header {:race-name "2022 T2T TAMPA" :date 1665273600000} :points-scored 150 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
+                    {:header {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :date 1668124800000} :points-scored 50 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
       (is (= expected (deduplicate-by-race-max-points input))))))
 
 
@@ -263,7 +266,6 @@
    {:name "I" :age 200}])
 
 (deftest filter-ages-test
-
   (testing "standard ranges from age-ranges list"
     (is (= ["A" "G"]
            (map :name (filter-ages sample-athletes [0 19])))
@@ -318,3 +320,48 @@
     (is (= ["B"]
            (map :name (filter-ages [{:name "B" :age 20} {:name "Y" :age nil}] [20 29])))
         "filters out nil even when others match")))
+
+(deftest test-add-standard-ranks
+  (testing "Standard 1224 ranking cases"
+
+    (testing "Mixed ties – 1, then 3-way tie, then 2-way tie, then singles"
+      (let [athletes [{:name "A" :total 100}
+                      {:name "B" :total 90}
+                      {:name "C" :total 90}
+                      {:name "D" :total 90}
+                      {:name "E" :total 80}
+                      {:name "F" :total 80}
+                      {:name "G" :total 70}
+                      {:name "H" :total 50}]
+            sorted (sort-by :total > athletes)
+            ranked (add-row-ranks sorted)
+            ranks (map :index ranked)]
+        (is (= [1 2 2 2 5 5 7 8] ranks))))
+
+    (testing "All unique → straight 1,2,3,4…"
+      (let [athletes (map #(hash-map :name (str "P" %) :total (- 100 %)) (range 1 6))
+            ranks (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (= [1 2 3 4 5] ranks))))
+
+    (testing "All athletes tied → everyone gets rank 1"
+      (let [athletes (repeat 5 {:name "Tied" :total 88})
+            ranks (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (every? #{1} ranks))))
+
+    (testing "Three-way tie at the top → next is 4th"
+      (let [athletes [{:name "Gold1" :total 95}
+                      {:name "Gold2" :total 95}
+                      {:name "Gold3" :total 95}
+                      {:name "4th" :total 90}
+                      {:name "5th" :total 85}]
+            ranks (->> athletes (sort-by :total >) add-row-ranks (map :index))]
+        (is (= [1 1 1 4 5] ranks))))
+
+    (testing "Single athlete"
+      (is (= [1] (->> [{:name "Solo" :total 42}]
+                      (sort-by :total >)
+                      add-row-ranks
+                      (map :index)))))
+
+    (testing "Empty list → empty result"
+      (is (= [] (add-row-ranks []))))))
