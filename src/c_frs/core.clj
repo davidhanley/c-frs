@@ -1,7 +1,9 @@
 (ns c-frs.core
   (:gen-class))
 
-(require '[clj-time.coerce :as c]
+(require '[hiccup.core :as h]
+         '[hiccup.page :as hp]
+         '[clj-time.coerce :as c]
          '[clojure.string :as str]
          '[clojure.data.csv :as csv]
          '[clojure.java.io :as io]
@@ -41,12 +43,15 @@
   (zipmap [:race-name :category]
           (map str/trim (str/split (str/trim s) #"\s*-\s*" 2))))
 
-(defn get-race-from-strings [sheet-strings date-filter]
+(defn to-url [fn]
+  (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/" (last (str/split fn #"/"))))
+
+(defn get-race-from-strings [sheet-strings date-filter filename]
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
         points (safe-parse-int (first pointsstr))
         scores (get-scores-list points)
-        header (conj (parse-name-and-category (first namestr)) {:date date :race-points points})
+        header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})
         athletes (map athlete-from-row rest)
         {:keys [male female]} (group-by :sex athletes)
         add-scores-and-rank (fn [a] (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) a scores (range)))
@@ -69,7 +74,7 @@
     (filter (fn [filename] (str/ends-with? filename ".csv")))))
 
 (defn read-race [fn filter]
-  (read-file-into fn #(get-race-from-strings % filter)))
+  (read-file-into fn #(get-race-from-strings % filter fn)))
 
 (defn partition-when
   "Like partition-by but decides split based on consecutive pairs"
@@ -149,10 +154,71 @@
         (assoc athlete :foreign true)
         athlete))))
 
+(defn write-header [title]
+  (hp/html5
+    {:lang "en"}
+    [:head
+     [:meta {:charset "UTF-8"}]
+     [:meta {:name "viewport" :content "width=device-width, initial-scale=1.0"}]
+     [:title title]
+     [:style
+      "body { font-family: Arial, sans-serif; margin: 2em; }
+       h1 { text-align: center; }
+       table { border-collapse: collapse; width: 100%; max-width: 1400px; margin: 1em auto; }
+       th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+       th { background-color: #f2f2f2; }
+       tr:nth-child(even) { background-color: #f9f9f9; }
+       .points { text-align: right; }"]]
+    [:body]))
+
+(defn name-and-category
+  "Returns 'Race Name' or 'Race Name - Category' if category exists."
+  [header]
+  (let [
+        category (:category header)]
+    (if category
+      (str (:race-name header) " - <br>" category)
+      (:race-name header))))
+
+(defn write-races-considered [races]
+  (let [title "Races Considered"
+        _results (keep :header (map first races))
+        sorted-results
+        (->> _results
+             (sort-by :date t/after?)) ]
+    (with-open [w (io/writer "content/races-considered.html")]
+      (let [html-content
+            (h/html
+              (write-header title)
+              [:h1 title]
+              [:p "Generated: " (java.time.LocalDateTime/now)
+               " — " (count sorted-results) " races"]
+              [:table
+               [:thead
+                [:tr
+                 [:th "Race Name"]
+                 [:th "Date"]
+                 [:th "Points"]]]
+               [:tbody
+                (for [race sorted-results]
+                  (let [name  (name-and-category race)
+                        date  (:date race)
+                        points (:race-points race)
+                        url   (:url race)]
+                    [:tr
+                     [:td [:a {:href url} name]]
+                     [:td date]
+                     [:td.points points]]))]])]
+        (.write w html-content)))
+    (println "Wrote races-considered.html with" (count sorted-results) "races"))
+  races)
+
+
 (defn compute-overall-result-sheet []
   (->>
     (scan-directories)
     (map #(read-race % recent-enough?))
+    (write-races-considered)
     (apply concat)
     (map (comp (foreign-marker-factory) (name-translator-factory)))
     (group-by :name)
@@ -165,14 +231,6 @@
 (defn format-points [points]
   (format "%.2f" (double points)))
 
-(defn name-and-category
-  "Returns 'Race Name' or 'Race Name - Category' if category exists."
-  [entry]
-  (let [header (:header entry)
-           category (:category header)]
-    (if category
-    (str (:race-name header) " - <br>" category)
-    (:race-name header))))
 
 
 (def c1 "#d8dbff")
@@ -191,92 +249,69 @@
               (assoc ath :color ( {c1 c2 c2 c1 nil c1} (:color prev)))) acc))) nil)
     (reverse)))
 
+
+
+
 (defn print-to-file
-  "Writes athletes to an HTML file as a simple table.
-   One row per athlete: name | age | total points | event1 | event2 | event3 | ...
-   Filename format: sex-ageRange-foreign.txt → but saved as .html
-
-   Assumes:
-   - athletes is already filtered and sorted
-   - :events list inside each athlete is already in desired display order"
+  "Writes athletes to an HTML file as a simple table using Hiccup."
   [athletes sex age-range foreign?]
-  (let [sex-str (case sex :male "male" :female "female" (name sex))
-
-        age-str (if (vector? age-range)
-                  (str (first age-range) "-" (second age-range))
-                  "all")
-
+  (let [sex-str     (case sex :male "male" :female "female" (name sex))
+        age-str     (if (vector? age-range)
+                      (str (first age-range) "-" (second age-range))
+                      "all")
         foreign-str (if foreign? "all" "us-only")
 
-        ;; filename without extension
-        base-name (str/join "-" [sex-str age-str foreign-str])
-        filename (str "content/" base-name ".html")
+        base-name   (str/join "-" [sex-str age-str foreign-str])
+        filename    (str "content/" base-name ".html")
 
-        title (str (str/capitalize sex-str) " — "
-                   (if age-range
-                     (str "Ages " (first age-range) "–" (second age-range))
-                     "All Ages")
-                   " — " (if foreign? "All Countries" "US Only"))]
+        title       (str (str/capitalize sex-str) " — "
+                         (if age-range
+                           (str "Ages " (first age-range) "–" (second age-range))
+                           "All Ages")
+                         " — " (if foreign? "All Countries" "US Only"))]
 
     (with-open [w (io/writer filename)]
-      (let [write (fn [& tokens]
-                    (.write w (clojure.string/join (map str tokens))) )]
-        ;; Header + basic styling
-        (write "<!DOCTYPE html>\n<html lang=\"en\">\n<head>")
-        (write "  <meta charset=\"UTF-8\">")
-        (write "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">")
-        (write "  <title>" title "</title>")
-        (write "  <style>")
-        (write "    body { font-family: Arial, sans-serif; margin: 2em; }")
-        (write "    h1 { text-align: center; }")
-        (write "    table { border-collapse: collapse; width: 100%; max-width: 1400px; margin: 1em auto; }")
-        (write "    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }")
-        (write "    th { background-color: #f2f2f2; }")
-        (write "    tr:nth-child(even) { background-color: #f9f9f9; }")
-        (write "    .points { text-align: right; }")
-        (write "  </style>\n</head>\n<body>")
+      (let [html-content
+            (h/html
+              (write-header title)
 
-        (write "  <h1>" title "</h1>")
-        (write "  <p>Generated: " (java.time.LocalDateTime/now) " — " (count athletes) " athletes</p>")
+              [:h1 title]
+              [:p "Generated: " (java.time.LocalDateTime/now)
+               " — " (count athletes) " athletes"]
 
-        (write "  <table>")
-        (write "    <thead>\n      <tr>")
-        (write "        <th>Name</th>")
-        (write "        <th>Age</th>")
-        (write "        <th>Total Points</th>")
+              [:table
+               [:thead
+                [:tr
+                 [:th "Name"]
+                 [:th "Age"]
+                 [:th "Total Points"]
+                 (for [i (range 1 11)]
+                   [:th (str "Event " i)])]]
 
-        ;; We don't know max events in advance → we just write "Event 1", "Event 2", ...
-        ;; You could compute max events first if you want fixed column headers
-        (dotimes [i 10]                                     ; assume max ~10 events is reasonable
-          (write "        <th>Event " (inc i) "</th>"))
-        (write "      </tr>\n    </thead>")
-        (write "    <tbody>")
-
-        ;; One row per athlete
-        (doseq [athlete (add-row-ranks athletes)]
-          (let [athlete-name (:name athlete)
-                age (or (:age athlete) "N/A")
-                total (format-points (:total athlete))
-                events (:events athlete)
-                color (name (:color athlete))
-                event-cells (map (fn [ev]
-                                   (str (name-and-category ev)
-                                        " <hr> Points: " (format-points (:points-scored ev)) " <br>rank " (:overall-rank ev)))
-                                 events)]
-            (write "      <tr style=\"background-color:" color ";\">")
-            (write "        <td>" (str/escape (str (:index athlete) ". " athlete-name) {\& "&amp;" \< "&lt;" \> "&gt;"}) "</td>")
-            (write "        <td>" age "</td>")
-            (write "        <td class=\"points\">" total "</td>")
-
-            ;; Event columns — pad with empty cells if fewer than 10 events
-            (doseq [cell (concat event-cells (repeat 10 ""))]
-              (write "        <td>" (or cell "") "</td>"))
-            (write "      </tr>")))
-
-        (write "    </tbody>\n  </table>")
-        (write "</body>\n</html>"))
-
-      (println "Wrote HTML table to" filename "—" (count athletes) "rows"))))
+               [:tbody
+                (for [athlete (add-row-ranks athletes)]
+                  (let [athlete-name (:name athlete)
+                        age          (or (:age athlete) "N/A")
+                        total        (format-points (:total athlete))
+                        events       (:events athlete)
+                        color        (name (:color athlete))
+                        event-cells  (map (fn [ev]
+                                            [:div
+                                             (name-and-category (:header ev))
+                                             [:hr]
+                                             "Points: " (format-points (:points-scored ev))
+                                             [:br] "rank " (:overall-rank ev)])
+                                          events)]
+                    [:tr {:style (str "background-color:" color ";")}
+                     [:td (str/escape (str (:index athlete) ". " athlete-name)
+                                      {\& "&amp;" \< "&lt;" \> "&gt;"})]
+                     [:td age]
+                     [:td.points total]
+                     ;; Pad with empty cells up to 10 events
+                     (for [cell (concat event-cells (repeat 10 ""))]
+                       [:td (or cell "")])]))]])]
+        (.write w html-content)))
+    (println "Wrote HTML table to" filename "—" (count athletes) "rows")))
 
 (defn print-both-to-file [athletes sex age-range]
   (print-to-file athletes sex age-range true)
