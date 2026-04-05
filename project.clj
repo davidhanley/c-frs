@@ -6,7 +6,8 @@
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [clj-time "0.15.2"]
                  [org.clojure/data.csv "1.0.1"]
-                 [hiccup "2.0.0"]]
+                 [hiccup "2.0.0"]
+                 [org.clojure/data.json "2.5.2"]]
   :main ^:skip-aot c-frs.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all
