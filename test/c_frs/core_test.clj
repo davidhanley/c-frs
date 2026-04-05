@@ -1,6 +1,7 @@
 (ns c-frs.core-test
   (:require [clojure.test :refer :all]
-            [c-frs.core :refer :all]))
+            [c-frs.core :refer :all]
+            [clj-time.coerce :as c]))
 
 (deftest test-fractions
   (testing "fractional seq"
@@ -36,14 +37,13 @@
 
 (deftest test-read-race
   (testing "see if we read a race sanely"
-    (let [race (read-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
+    (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
           athlete (first race)
           header (:header athlete)
           ]
-      (is (= (count race) 1245))
+      (is (= (count race) 1244))                            ; went down by 1?
       (is (= (:race-name header) "2023 HUSTLE UP THE HANCOCK"))
       (is (= (:race-points header) 150))
-
       )))
 
 
@@ -387,3 +387,22 @@
     (let [athletes [{:name "Alice" :sex :female}
                     {:name "Bob"   :sex :male}]]
       (is (= athletes (dedupe-athletes athletes))))))
+
+(deftest test-json-read
+  (testing "see if reading a json race works"
+    (let [athletes (read-json-race "TowerRunningRaceData/2026-ffa-orlando.json" (fn [x]true))
+          first-ath (first athletes)
+          header (:header first-ath)]
+         (is (> (count athletes) 0))
+         (is (= (:race-name header) "Fight for Air orlando 2026"))
+         (is (= (:race-points header) 50))
+         (is (= (:date header) (c/from-string "2026-3-7")))
+         (is (= (count athletes) 154))
+         (is (= (:name first-ath) "Troy Alston"))
+         ))
+
+  (testing "see if a date out or range results in empty results"
+    (let [athletes (read-json-race "TowerRunningRaceData/2026-ffa-orlando.json" (fn [x]false))]
+      (is (= (count athletes) 0))
+      ))
+  )

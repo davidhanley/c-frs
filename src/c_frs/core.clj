@@ -7,6 +7,7 @@
          '[clojure.string :as str]
          '[clojure.data.csv :as csv]
          '[clojure.java.io :as io]
+         '[clojure.data.json :as json]
          '[clj-time.core :as t]
          '[clj-time.format :as f])
 
@@ -51,45 +52,57 @@
   "Returns a sequence of athletes with duplicate names removed.
    Keeps the first occurrence of each name (preserves original order)."
   [athletes]
-  (:result  (reduce (fn [acc athlete]
-            (let [name (:name athlete)]
-              (if (contains? (:seen acc) name)
-                acc
-                (-> acc
-                    (update :result conj athlete)
-                    (update :seen conj name)))))
-          {:result [] :seen #{}}
-          athletes)))
+  (:result (reduce (fn [acc athlete]
+                     (let [name (:name athlete)]
+                       (if (contains? (:seen acc) name)
+                         acc
+                         (-> acc
+                             (update :result conj athlete)
+                             (update :seen conj name)))))
+                   {:result [] :seen #{}}
+                   athletes)))
 
-(defn get-race-from-strings [sheet-strings date-filter filename]
+(defn add-scores-and-rank [athletes header]
+  (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
+
+(defn dedupe-separate-and-score [header athletes]
+  (let [{:keys [male female]} (group-by :sex (dedupe-athletes athletes))]
+    (mapcat #(add-scores-and-rank % header) [male female])))
+
+(defn get-race-from-csv-strings
+  "Given a sequence of string, parse a race from that. The structure of a race is all the athletes who competed.
+  As we operate on athletes, each athlete has a copy of the race info, points, date, name, etc."
+  [sheet-strings date-filter filename]
   (let [[namestr datestr _ pointsstr & rest] sheet-strings
         date (parse-date (first datestr))
         points (safe-parse-int (first pointsstr))
-        scores (get-scores-list points)
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})
-        athletes (map athlete-from-row rest)
-        {:keys [male female]} (group-by :sex (dedupe-athletes athletes))
-        add-scores-and-rank (fn [a] (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) a scores (range)))
         ]
     (if (and points date (date-filter date))
-      (mapcat add-scores-and-rank [male female]))))
+      (dedupe-separate-and-score header (map athlete-from-row rest)))))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
 
-(defn read-file-into [filename pfunc]
+(defn read-csv-file-into
+  "read a CSV into a sequence, clean the lines, and feed that to a suupplied function.
+    Use doall to make sure all processing happens before the file is closed."
+  [filename pfunc]
   (with-open [rdr (clojure.java.io/reader filename)]
     (doall (pfunc (map clean-line (csv/read-csv rdr))))))
 
-(defn scan-directories []
+(defn scan-directories
+  "Look for all the race data files, returning a list of them"
+  []
   (->>
     (clojure.java.io/file "TowerRunningRaceData")
     (file-seq)
     (map str)
-    (filter (fn [filename] (str/ends-with? filename ".csv")))))
+    (filter (fn [filename] (or (str/ends-with? filename ".csv") (str/ends-with? filename ".json"))))))
 
-(defn read-race [fn filter]
-  (read-file-into fn #(get-race-from-strings % filter fn)))
+(defn read-csv-race [fn filter]
+  "Map the race-to-strings function over the contents of the race file"
+  (read-csv-file-into fn #(get-race-from-csv-strings % filter fn)))
 
 (defn partition-when
   "Like partition-by but decides split based on consecutive pairs"
@@ -103,14 +116,19 @@
     [[(first coll)]]
     (next coll)))
 
-(defn ages-compatible? [athlete1 athlete2]
-  (let [age1 (:age athlete1) age2 (:age athlete2)]
-    (cond
-      (nil? age1) true
-      (nil? age2) true
-      :else (<= (abs (- age1 age2)) 1))))
+(defn ages-compatible?
+  "See if two athletes might be the same person based on age"
+  [athlete1 athlete2]
+  (let [age1 (:age athlete1)
+        age2 (:age athlete2)]
+    (or (nil? age1)
+        (nil? age2)
+        (<= (abs (- age1 age2)) 1))))
 
-(defn partition-athlete [ath-list]
+(defn partition-athlete
+  "If there are two athletes with the same name, but there are very different ages, treat them as different athletes.
+  this is very rare and expensive, so maybe this should test first and not make a new list each time"
+  [ath-list]
   (partition-when ages-compatible? (sort-by :age ath-list)))
 
 (defn create-athlete-row [races]
@@ -169,7 +187,9 @@
         (assoc athlete :foreign true)
         athlete))))
 
-(defn write-header [title]
+(defn write-header
+  "Write the HTML header for the pages.  Separate functon"
+  [title]
   (hp/html5
     {:lang "en"}
     [:head
@@ -189,22 +209,22 @@
 (defn name-and-category
   "Returns 'Race Name' or 'Race Name - Category' if category exists."
   [header]
-  (let [
-        category (:category header)]
-    (if category
-      (str (:race-name header) " - <br>" category)
-      (:race-name header))))
+  (let [category (:category header)
+        name (:race-name header)]
+    (if category (str name " - <br>" category)
+                 name)))
 
-(defn write-races-considered [races]
+(defn write-races-considered
+  "Write a file that shows all the races considered in this last year of scoring. Returns the same races
+  so it can be used in a chain"
+  [races]
   (let [title "Races Considered"
         date-formatter (f/formatter "yyyy-MM-dd")
-        _results (keep :header (map first races))
-        sorted-results
-        (->> _results
-             (sort-by :date t/after?))]
+        results (keep :header (keep first races))
+        sorted-results (sort-by :date t/after? results)]
     (with-open [w (io/writer "content/races-considered.html")]
       (let [html-content
-            (h/html
+            (hp/html5
               (write-header title)
               [:h1 title]
               [:p "Generated: " (java.time.LocalDateTime/now)
@@ -220,8 +240,8 @@
                   (let [name (name-and-category race)
                         date (:date race)
                         date-str (if date
-                                            (f/unparse date-formatter date)
-                                            "N/A")
+                                   (f/unparse date-formatter date)
+                                   "N/A")
                         points (:race-points race)
                         url (:url race)]
                     [:tr
@@ -232,6 +252,40 @@
     (println "Wrote races-considered.html with" (count sorted-results) "races"))
   races)
 
+
+(defn read-json-race [filename filter-date]
+  (with-open [rdr (io/reader filename)]
+    (let [value-fn (fn [key value]
+                     (cond
+                       ;; Parse date
+                       (and (= key :date) (string? value))
+                       (c/from-string value)
+
+                       ;; Convert sex/gender string to keyword
+                       (and (= key :sex) (string? value))
+                       (get-sex-from-string value)
+
+                       ;; Add this if your JSON still has :gender in some files
+                       (and (= key :gender) (string? value))
+                       (get-sex-from-string value)
+
+                       ;; Default: leave everything else unchanged
+                       :else value))
+          header-line (.readLine rdr)
+          header (json/read-str header-line :key-fn keyword :value-fn value-fn)]
+      (if (filter-date (:date header))
+        (->>
+          (json/read rdr :key-fn keyword :value-fn value-fn)
+          (dedupe-separate-and-score header)
+          )
+        []))))
+
+(defn read-race [filename fn]
+  (cond
+    (.endsWith filename ".csv") (read-csv-race filename fn)
+    (.endsWith filename ".json") (read-json-race filename fn)
+    :else (throw (ex-info "Unsupported file type. Only .csv and .json are supported."
+                          {:filename filename}))))
 
 (defn compute-overall-result-sheet []
   (->>
@@ -250,26 +304,50 @@
 (defn format-points [points]
   (format "%.2f" (double points)))
 
+(defn add-row-ranks
+  "Take the sequence of sorted athletes, break it up into 'tie groups' and alternate
+  colors for the groups to make them more clearly visible."
+  [sorted-athletes]
+  (let [c1 "#d8dbff"
+        c2 "#fdf4f8"
+        next-color {c1 c2 c2 c1 nil c1}]
+    (->>
+      sorted-athletes
+      (map (fn [a i] (assoc i :index a)) (rest (range)))
+      (reduce
+        (fn [acc ath]
+          (let [prev (first acc)
+                same-points (= (:total ath) (:total prev))]
+            (cons
+              (if same-points
+                (assoc ath :tie? true :index (:index prev) :color (or (:color prev) :blue))
+                (assoc ath :color (next-color (:color prev)))) acc))) nil)
+      (reverse))))
 
-
-(def c1 "#d8dbff")
-(def c2 "#fdf4f8")
-(defn add-row-ranks [sorted-athletes]
-  (->>
-    sorted-athletes
-    (map (fn [a i] (assoc i :index a)) (rest (range)))
-    (reduce
-      (fn [acc ath]
-        (let [prev (first acc)
-              same-points (= (:total ath) (:total prev))]
-          (cons
-            (if same-points
-              (assoc ath :tie? true :index (:index prev) :color (or (:color prev) :blue))
-              (assoc ath :color ({c1 c2 c2 c1 nil c1} (:color prev)))) acc))) nil)
-    (reverse)))
-
-
-
+(defn make-athlete-table-row
+  "Turn an athlete entry to an HTML row using Hiccup.
+  this could potentially be done once per athlete, at least for the event cells"
+  [athlete]
+  (let [athlete-name (:name athlete)
+        age (or (:age athlete) "N/A")
+        total (format-points (:total athlete))
+        events (:events athlete)
+        color (name (:color athlete))
+        event-cells (map (fn [ev]
+                           [:div
+                            (name-and-category (:header ev))
+                            [:hr]
+                            "Points: " (format-points (:points-scored ev))
+                            [:br] "rank " (:overall-rank ev)])
+                         events)]
+    [:tr {:style (str "background-color:" color ";")}
+     [:td (str/escape (str (:index athlete) ". " athlete-name)
+                      {\& "&amp;" \< "&lt;" \> "&gt;"})]
+     [:td age]
+     [:td.points total]
+     ;; Pad with empty cells up to 10 events
+     (for [cell (concat event-cells (repeat 10 ""))]
+       [:td (or cell "")])]))
 
 (defn print-to-file
   "Writes athletes to an HTML file as a simple table using Hiccup."
@@ -293,11 +371,9 @@
       (let [html-content
             (h/html
               (write-header title)
-
               [:h1 title]
               [:p "Generated: " (java.time.LocalDateTime/now)
                " — " (count athletes) " athletes"]
-
               [:table
                [:thead
                 [:tr
@@ -306,29 +382,9 @@
                  [:th "Total Points"]
                  (for [i (range 1 11)]
                    [:th (str "Event " i)])]]
-
                [:tbody
                 (for [athlete (add-row-ranks athletes)]
-                  (let [athlete-name (:name athlete)
-                        age (or (:age athlete) "N/A")
-                        total (format-points (:total athlete))
-                        events (:events athlete)
-                        color (name (:color athlete))
-                        event-cells (map (fn [ev]
-                                           [:div
-                                            (name-and-category (:header ev))
-                                            [:hr]
-                                            "Points: " (format-points (:points-scored ev))
-                                            [:br] "rank " (:overall-rank ev)])
-                                         events)]
-                    [:tr {:style (str "background-color:" color ";")}
-                     [:td (str/escape (str (:index athlete) ". " athlete-name)
-                                      {\& "&amp;" \< "&lt;" \> "&gt;"})]
-                     [:td age]
-                     [:td.points total]
-                     ;; Pad with empty cells up to 10 events
-                     (for [cell (concat event-cells (repeat 10 ""))]
-                       [:td (or cell "")])]))]])]
+                  (make-athlete-table-row athlete))]])]
         (.write w html-content)))
     (println "Wrote HTML table to" filename "—" (count athletes) "rows")))
 
@@ -351,8 +407,9 @@
     (doseq [[sex athletes] grouped]
       (let [sorted (sort-by :total > athletes)]
         (print-both-to-file sorted sex nil)
-        (doseq [range age-ranges]
-          (print-both-to-file (filter-ages sorted range) sex range))))))
+        (dorun
+          (map (fn [range]
+                 (print-both-to-file (filter-ages sorted range) sex range)) age-ranges))))))
 
 
 
