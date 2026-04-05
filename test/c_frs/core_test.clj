@@ -398,7 +398,7 @@
          (is (= (:race-points header) 50))
          (is (= (:date header) (c/from-string "2026-3-7")))
          (is (= (count athletes) 154))
-         (is (= (:name first-ath) "Troy Alston"))
+         (is (= (:name first-ath) "TROY ALSTON"))
          ))
 
   (testing "see if a date out or range results in empty results"
