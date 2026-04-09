@@ -21,19 +21,21 @@
   (map #(* % base) fractions))
 (def get-scores-list (memoize get-scores-list-base))
 
-(defn get-sex-from-string [gs]
-  (some-> gs
+(defn get-sex-from-string
+  "Given a string describing the athlete's sex, reutrn :male or :female"
+  [sex-string]
+  (some-> sex-string
           (str/replace "*" "")
           first
           Character/toUpperCase
           {\M :male \F :female}))
 
-(defn safe-parse-int [str]
-  (try
-    (some-> str clojure.string/trim Long/parseLong)
-    (catch NumberFormatException _ nil)))
+(defn safe-parse-int [s]
+  (some-> s clojure.string/trim parse-long))
 
-(defn athlete-from-row [row]
+(defn athlete-from-row
+  "given an array of strings from the CSV row, make an athlete struct"
+  [row]
   (let [[_ name age-str sex-str] row]
     {:name name
      :sex  (get-sex-from-string sex-str)
@@ -41,11 +43,15 @@
 
 (def parse-date c/from-string)
 
-(defn parse-name-and-category [s]
+(defn parse-name-and-category
+  "get the race name into a struct, with an option category if there is a dash"
+  [race-description]
   (zipmap [:race-name :category]
-          (map str/trim (str/split (str/trim s) #"\s*-\s*" 2))))
+          (map str/trim (str/split race-description #"\s*-\s*" 2))))
 
-(defn to-url [filename]
+(defn to-url
+  "Create a URL string from the filename so users can see the data in github"
+  [filename]
   (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/"
        (last (str/split filename #"/"))))
 
@@ -63,10 +69,14 @@
                    {:result [] :seen #{}}
                    athletes)))
 
-(defn add-scores-and-rank [athletes header]
+(defn add-scores-and-rank
+  "Given a sequence of athletes and the race header, add the header, and the score and rank for each athlete"
+  [athletes header]
   (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
 
-(defn dedupe-separate-and-score [header athletes]
+(defn dedupe-separate-and-score
+  "Dedupe the athletes, separate by gender, and add scores & ranks"
+  [header athletes]
   (let [{:keys [male female]} (group-by :sex (dedupe-athletes athletes))]
     (mapcat #(add-scores-and-rank % header) [male female])))
 
@@ -101,9 +111,10 @@
     (map str)
     (filter (fn [filename] (or (str/ends-with? filename ".csv") (str/ends-with? filename ".json"))))))
 
-(defn read-csv-race [fn filter]
+(defn read-csv-race
   "Map the race-to-strings function over the contents of the race file"
-  (read-csv-file-into fn #(get-race-from-csv-strings % filter fn)))
+  [filename keep-race?]
+  (read-csv-file-into filename #(get-race-from-csv-strings % keep-race? filename)))
 
 (defn partition-when
   "Like partition-by but decides split based on consecutive pairs"
@@ -132,8 +143,10 @@
   [ath-list]
   (partition-when ages-compatible? (sort-by :age ath-list)))
 
-(defn create-athlete-row [races]
+(defn create-athlete-row
   "create the result row struct, age, total points, name, event, etc"
+  ; todo: render the HTML row here?
+  [races]
   (merge (select-keys (first races) [:name :sex :foreign])
          {:total  (reduce + (map :points-scored (take 5 races)))
           :age    (some->> (keep :age races) not-empty (apply max))
@@ -178,9 +191,10 @@
 (defn recent-enough? [race-date]
   (t/after? race-date one-year-ago))
 
-(defn foreign-marker-factory []
+(defn foreign-marker-factory
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    adds :foreign true to athletes whose :name exactly matches a line in the file."
+  []
   (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
                                           (fn [line] (str/upper-case (str/trim line)))))]
     (fn [athlete]
@@ -263,7 +277,10 @@
   (let [transform (get transformers key identity)]
     (transform value)))
 
-(defn read-json-race [filename filter-date]
+(defn read-json-race
+  "Given a JSON file, read it into a race result.  Much simpler than the CSV reads"
+  ; todo: is this doing the name translation and tagging of foreigners?
+  [filename filter-date]
   (with-open [rdr (io/reader filename)]
     (let [header-line (.readLine rdr)
           header (conj  (json/read-str header-line :key-fn keyword :value-fn value-fn) {:url (to-url filename)})]
@@ -274,10 +291,11 @@
           )
         []))))
 
-(defn read-race [filename fn]
+(defn read-race
+  [filename keep-race?]
   (cond
-    (.endsWith filename ".csv") (read-csv-race filename fn)
-    (.endsWith filename ".json") (read-json-race filename fn)
+    (.endsWith filename ".csv") (read-csv-race filename keep-race?)
+    (.endsWith filename ".json") (read-json-race filename keep-race?)
     :else (throw (ex-info "Unsupported file type. Only .csv and .json are supported."
                           {:filename filename}))))
 
