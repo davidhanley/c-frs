@@ -365,6 +365,7 @@
 
     (testing "Empty list → empty result"
       (is (= [] (add-row-ranks []))))))
+
 (deftest test-dedupe-athletes
   (testing "keeps first occurrence of each name and preserves order"
     (let [athletes [{:name "Alice" :sex :female :age 25 :points-scored 1200}
@@ -390,15 +391,16 @@
 
 (deftest test-json-read
   (testing "see if reading a json race works"
-    (let [athletes (read-json-race "TowerRunningRaceData/2026-ffa-orlando.json" (fn [x]true))
+    (let [athletes (read-json-race "TowerRunningRaceData/2026-oakbrook-single.json" (fn [x]true))
           first-ath (first athletes)
           header (:header first-ath)]
          (is (> (count athletes) 0))
-         (is (= (:race-name header) "Fight for Air orlando 2026"))
+         (is (= (:race-name header) "Oakbrook 2026"))
          (is (= (:race-points header) 50))
-         (is (= (:date header) (c/from-string "2026-3-7")))
-         (is (= (count athletes) 154))
-         (is (= (:name first-ath) "TROY ALSTON"))
+         (is (= (:date header) (c/from-string "2026-3-8")))
+         (is (= (count athletes) 338))
+         (is (= (:name first-ath) "THOMAS BAKER"))
+         (is (= (:url header) "dave"))
          ))
 
   (testing "see if a date out or range results in empty results"

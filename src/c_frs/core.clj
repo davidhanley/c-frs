@@ -45,8 +45,9 @@
   (zipmap [:race-name :category]
           (map str/trim (str/split (str/trim s) #"\s*-\s*" 2))))
 
-(defn to-url [fn]
-  (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/" (last (str/split fn #"/"))))
+(defn to-url [filename]
+  (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/"
+       (last (str/split filename #"/"))))
 
 (defn dedupe-athletes
   "Returns a sequence of athletes with duplicate names removed.
@@ -252,7 +253,6 @@
     (println "Wrote races-considered.html with" (count sorted-results) "races"))
   races)
 
-
 (def transformers
   {:date   c/from-string
    :name   trim-and-upper
@@ -260,29 +260,13 @@
    :gender get-sex-from-string})
 
 (defn value-fn [key value]
-  (cond
-    ;; Parse date
-    (and (= key :date) )
-    (c/from-string value)
-
-    (and (= key :name) )
-    (trim-and-upper value)
-
-    ;; Convert sex/gender string to keyword
-    (and (= key :sex) )
-    (get-sex-from-string value)
-
-    ;; Add this if your JSON still has :gender in some files
-    (and (= key :gender) )
-    (get-sex-from-string value)
-
-    ;; Default: leave everything else unchanged
-    :else value))
+  (let [transform (get transformers key identity)]
+    (transform value)))
 
 (defn read-json-race [filename filter-date]
   (with-open [rdr (io/reader filename)]
     (let [header-line (.readLine rdr)
-          header (json/read-str header-line :key-fn keyword :value-fn value-fn)]
+          header (conj  (json/read-str header-line :key-fn keyword :value-fn value-fn) {:url (to-url filename)})]
       (if (filter-date (:date header))
         (->>
           (json/read rdr :key-fn keyword :value-fn value-fn)
