@@ -409,10 +409,6 @@
         (.write w html-content)))
     (println "Wrote HTML table to" filename "—" (count athletes) "rows")))
 
-(defn print-both-to-file [athletes sex age-range]
-  (print-to-file athletes sex age-range true)
-  (print-to-file (remove :foreign athletes) sex age-range false))
-
 (def age-ranges [[0 19] [20 29] [30 39] [40 49] [50 59] [60 69] [70 79] [80 89] [90 99] [100 200]])
 
 (defn filter-ages [athletes [min-age max-age]]
@@ -424,16 +420,15 @@
 (defn -main
   [& args]
   (let [overall-results (compute-overall-result-sheet)]
-    (doseq [[sex athletes] [[:male (:male overall-results)]
-                           [:female (:female overall-results)]]]
-      (let [sorted (sort-by :total > athletes)]
-        (print-both-to-file sorted sex nil)
+    (doseq [sex [:male :female]
+            foreign? [true false]]
+      (let [athletes (get overall-results sex)
+            filtered-athletes (if foreign?
+                                athletes
+                                (remove :foreign athletes))
+            sorted (sort-by :total > filtered-athletes)]
+        (print-to-file sorted sex nil foreign?)
         (dorun
           (map (fn [range]
-                 (print-both-to-file (filter-ages sorted range) sex range)) age-ranges))))))
-
-
-
-
-
-
+                 (print-to-file (filter-ages sorted range) sex range foreign?))
+               age-ranges))))))
