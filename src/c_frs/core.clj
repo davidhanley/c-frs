@@ -299,13 +299,15 @@
     :else (throw (ex-info "Unsupported file type. Only .csv and .json are supported."
                           {:filename filename}))))
 
+(def update-athlete-name-and-foreign (comp (foreign-marker-factory) (name-translator-factory)))
+
 (defn compute-overall-result-sheet []
   (->>
     (scan-directories)
     (map #(read-race % recent-enough?))
     (write-races-considered)
     (apply concat)
-    (map (comp (foreign-marker-factory) (name-translator-factory)))
+    (map update-athlete-name-and-foreign)
     (group-by :name)
     (mapcat rest)
     (mapcat partition-athlete)
@@ -364,7 +366,7 @@
 (defn print-to-file
   "Writes athletes to an HTML file as a simple table using Hiccup."
   [athletes sex age-range foreign?]
-  (let [sex-str (case sex :male "male" :female "female" (name sex))
+  (let [sex-str (name sex)
         age-str (if (vector? age-range)
                   (str (first age-range) "-" (second age-range))
                   "all")

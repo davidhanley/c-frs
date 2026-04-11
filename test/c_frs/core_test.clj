@@ -394,13 +394,12 @@
     (let [athletes (read-json-race "TowerRunningRaceData/2026-oakbrook-single.json" (fn [x]true))
           first-ath (first athletes)
           header (:header first-ath)]
-         (is (> (count athletes) 0))
          (is (= (:race-name header) "Oakbrook 2026"))
          (is (= (:race-points header) 50))
          (is (= (:date header) (c/from-string "2026-3-8")))
          (is (= (count athletes) 338))
          (is (= (:name first-ath) "THOMAS BAKER"))
-         (is (= (:url header) "dave"))
+         (is (= (:url header) "https://github.com/davidhanley/TowerRunningRaceData/blob/main/2026-oakbrook-single.json"))
          ))
 
   (testing "see if a date out or range results in empty results"
