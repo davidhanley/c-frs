@@ -38,10 +38,10 @@
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
-          athlete (first race)
-          header (:header athlete)
+          athlete (first (concat (:male race) (:female race)))
+          header (:header race)
           ]
-      (is (= (count race) 1244))                            ; went down by 1?
+      (is (= (+ (count (:male race)) (count (:female race))) 1244)) ; went down by 1?
       (is (= (:race-name header) "2023 HUSTLE UP THE HANCOCK"))
       (is (= (:race-points header) 150))
       )))
@@ -392,18 +392,18 @@
 (deftest test-json-read
   (testing "see if reading a json race works"
     (let [athletes (read-json-race "TowerRunningRaceData/2026-oakbrook-single.json" (fn [x]true))
-          first-ath (first athletes)
-          header (:header first-ath)]
+          first-ath (first (concat (:male athletes) (:female athletes)))
+          header (:header athletes)]
          (is (= (:race-name header) "Oakbrook 2026"))
          (is (= (:race-points header) 50))
          (is (= (:date header) (c/from-string "2026-3-8")))
-         (is (= (count athletes) 338))
+         (is (= (+ (count (:male athletes)) (count (:female athletes))) 338))
          (is (= (:name first-ath) "THOMAS BAKER"))
          (is (= (:url header) "https://github.com/davidhanley/TowerRunningRaceData/blob/main/2026-oakbrook-single.json"))
          ))
 
   (testing "see if a date out or range results in empty results"
     (let [athletes (read-json-race "TowerRunningRaceData/2026-ffa-orlando.json" (fn [x]false))]
-      (is (= (count athletes) 0))
+      (is (nil? athletes))
       ))
   )
