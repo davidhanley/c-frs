@@ -37,18 +37,16 @@
   "Applies f to each non-blank, non-comment line.
    f receives the trimmed line as string."
   [filepath f]
-   (with-open [rdr (io/reader filepath)]
-     (->> (line-seq rdr)
-          (map str/trim)
-          (remove #(or (str/blank? %) (str/starts-with? % "#")))
-          (map str/upper-case)
-          (map f)
-          doall)))                                         ; force realization before closing file
+  (with-open [rdr (io/reader filepath)]
+    (->> (line-seq rdr)
+         (remove #(or (str/blank? %) (str/starts-with? % "#")))
+         (map f)
+         doall)))                                           ; force realization before closing file
 
 (defn name-translator-factory []
   (let [rules (process-lines "TowerRunningRaceData/translate.dat"
                              (fn [line]
-                               (let [[pattern name] (str/split line #"\s*,\s*" 2)]
+                               (let [[pattern name] (map str/trim (str/split line #"," 2))]
                                  [(re-pattern pattern) name])))]
     (fn [name]
       (or (some (fn [[re repl]]
@@ -61,7 +59,8 @@
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    returns true when an athlete name exactly matches a line in the file."
   []
-  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat" identity))]
+  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
+                                          (fn [line] (str/upper-case (str/trim line)))))]
     (fn [name]
       (contains? foreign-names name))))
 
@@ -69,20 +68,21 @@
 (def foreign-name? (foreign-marker-factory))
 
 (defn normalize-athlete [athlete]
-  (let [old-name (:name athlete)
-        new-name (translate-name old-name)
-        foreign? (foreign-name? new-name)]
-    (cond-> athlete
-            (not= old-name new-name) (assoc :name new-name)
-            foreign? (assoc :foreign true))))
+  (let [name (translate-name (:name athlete))
+        foreign? (foreign-name? name)]
+    (cond-> (assoc athlete :name name)
+      foreign? (assoc :foreign true)
+      (not foreign?) (dissoc :foreign))))
 
 (defn athlete-from-row
   "given an array of strings from the CSV row, make an athlete struct"
   [row]
-  (let [[_ raw-name age-str sex-str] row]
-    (normalize-athlete {:name raw-name
-                        :sex  (get-sex-from-string sex-str)
-                        :age  (safe-parse-int age-str)})))
+  (let [[_ raw-name age-str sex-str] row
+        name (translate-name raw-name)]
+    (cond-> {:name name
+             :sex  (get-sex-from-string sex-str)
+             :age  (safe-parse-int age-str)}
+      (foreign-name? name) (assoc :foreign true))))
 
 (def parse-date c/from-string)
 
