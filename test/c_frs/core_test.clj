@@ -35,6 +35,24 @@
       (is (= (:sex ath) :male))
       )))
 
+(deftest test-normalize-athlete
+  (with-redefs [translate-name (fn [name]
+                                 ({"DAVE" "DAVID"
+                                   "ALICE" "ALICIA"}
+                                  name name))
+                foreign-name? (fn [name] (= name "ALICIA"))]
+    (testing "unchanged name and non-foreign"
+      (is (= {:name "BOB" :sex :male :age 42}
+             (normalize-athlete {:name "BOB" :sex :male :age 42}))))
+
+    (testing "renamed but non-foreign"
+      (is (= {:name "DAVID" :sex :male :age 50}
+             (normalize-athlete {:name "DAVE" :sex :male :age 50}))))
+
+    (testing "foreign flag added when translated name matches"
+      (is (= {:name "ALICIA" :sex :female :age 31 :foreign true}
+             (normalize-athlete {:name "ALICE" :sex :female :age 31}))))))
+
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
@@ -415,14 +433,13 @@
                                {:name "TOP AMERICAN" :sex :male}
                                {:name "SECOND AMERICAN" :sex :male}]
                       :female []}]]
-      (with-redefs [update-athlete-name-and-foreign identity]
-        (let [all-results (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data true))
-              us-results  (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data false))
-              all-top-us  (first (filter #(= "TOP AMERICAN" (:name %)) all-results))
-              us-top-us   (first (filter #(= "TOP AMERICAN" (:name %)) us-results))
-              all-event   (first (:events all-top-us))
-              us-event    (first (:events us-top-us))]
-          (is (= 125 (:points-scored all-event)) "Second overall in all-country scoring")
-          (is (= 2 (:overall-rank all-event)))
-          (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
-          (is (= 1 (:overall-rank us-event))))))))
+      (let [all-results (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data true))
+            us-results  (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data false))
+            all-top-us  (first (filter #(= "TOP AMERICAN" (:name %)) all-results))
+            us-top-us   (first (filter #(= "TOP AMERICAN" (:name %)) us-results))
+            all-event   (first (:events all-top-us))
+            us-event    (first (:events us-top-us))]
+        (is (= 125 (:points-scored all-event)) "Second overall in all-country scoring")
+        (is (= 2 (:overall-rank all-event)))
+        (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
+        (is (= 1 (:overall-rank us-event)))))))
