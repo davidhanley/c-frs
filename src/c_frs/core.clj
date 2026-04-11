@@ -68,21 +68,20 @@
 (def foreign-name? (foreign-marker-factory))
 
 (defn normalize-athlete [athlete]
-  (let [name (translate-name (:name athlete))
-        foreign? (foreign-name? name)]
-    (cond-> (assoc athlete :name name)
-      foreign? (assoc :foreign true)
-      (not foreign?) (dissoc :foreign))))
+  (let [old-name (:name athlete)
+        new-name (translate-name old-name)
+        foreign? (foreign-name? new-name)]
+    (cond-> athlete
+            (not= old-name new-name) (assoc :name new-name)
+            foreign? (assoc :foreign true))))
 
 (defn athlete-from-row
   "given an array of strings from the CSV row, make an athlete struct"
   [row]
-  (let [[_ raw-name age-str sex-str] row
-        name (translate-name raw-name)]
-    (cond-> {:name name
-             :sex  (get-sex-from-string sex-str)
-             :age  (safe-parse-int age-str)}
-      (foreign-name? name) (assoc :foreign true))))
+  (let [[_ raw-name age-str sex-str] row]
+    (normalize-athlete {:name raw-name
+                        :sex  (get-sex-from-string sex-str)
+                        :age  (safe-parse-int age-str)})))
 
 (def parse-date c/from-string)
 
@@ -431,8 +430,9 @@
               (and age (<= age max-age) (>= age min-age))))
           athletes))
 
-(defn -main
-  [& args]
+(defn make-sheets
+  "Generate all output sheets; intended for REPL use."
+  []
   (let [races (load-recent-races)
         results-by-mode
         {true  (compute-overall-result-sheet-from-races races true)
@@ -443,6 +443,12 @@
             sorted (sort-by :total > athletes)]
         (print-to-file sorted sex nil foreign?)
         (dorun
-          (map (fn [range]
+          (pmap (fn [range]
                  (print-to-file (filter-ages sorted range) sex range foreign?))
                age-ranges))))))
+
+(defn -main
+  [& _args]
+  (make-sheets)
+  (shutdown-agents))
+

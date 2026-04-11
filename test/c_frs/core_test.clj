@@ -35,6 +35,24 @@
       (is (= (:sex ath) :male))
       )))
 
+(deftest test-normalize-athlete
+  (with-redefs [translate-name (fn [name]
+                                 ({"DAVE" "DAVID"
+                                   "ALICE" "ALICIA"}
+                                  name name))
+                foreign-name? (fn [name] (= name "ALICIA"))]
+    (testing "unchanged name and non-foreign"
+      (is (= {:name "BOB" :sex :male :age 42}
+             (normalize-athlete {:name "BOB" :sex :male :age 42}))))
+
+    (testing "renamed but non-foreign"
+      (is (= {:name "DAVID" :sex :male :age 50}
+             (normalize-athlete {:name "DAVE" :sex :male :age 50}))))
+
+    (testing "foreign flag added when translated name matches"
+      (is (= {:name "ALICIA" :sex :female :age 31 :foreign true}
+             (normalize-athlete {:name "ALICE" :sex :female :age 31}))))))
+
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
