@@ -33,13 +33,56 @@
 (defn safe-parse-int [s]
   (some-> s clojure.string/trim parse-long))
 
+(defn process-lines
+  "Applies f to each non-blank, non-comment line.
+   f receives the trimmed line as string."
+  [filepath f]
+  (with-open [rdr (io/reader filepath)]
+    (->> (line-seq rdr)
+         (remove #(or (str/blank? %) (str/starts-with? % "#")))
+         (map f)
+         doall)))                                           ; force realization before closing file
+
+(defn name-translator-factory []
+  (let [rules (process-lines "TowerRunningRaceData/translate.dat"
+                             (fn [line]
+                               (let [[pattern name] (map str/trim (str/split line #"," 2))]
+                                 [(re-pattern pattern) name])))]
+    (fn [name]
+      (or (some (fn [[re repl]]
+                  (when (re-matches re name)
+                    repl))
+                rules)
+          name))))
+
+(defn foreign-marker-factory
+  "Reads TowerRunningRaceData/foreign.dat and returns a function that
+   returns true when an athlete name exactly matches a line in the file."
+  []
+  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
+                                          (fn [line] (str/upper-case (str/trim line)))))]
+    (fn [name]
+      (contains? foreign-names name))))
+
+(def translate-name (name-translator-factory))
+(def foreign-name? (foreign-marker-factory))
+
+(defn normalize-athlete [athlete]
+  (let [name (translate-name (:name athlete))
+        foreign? (foreign-name? name)]
+    (cond-> (assoc athlete :name name)
+      foreign? (assoc :foreign true)
+      (not foreign?) (dissoc :foreign))))
+
 (defn athlete-from-row
   "given an array of strings from the CSV row, make an athlete struct"
   [row]
-  (let [[_ name age-str sex-str] row]
-    {:name name
-     :sex  (get-sex-from-string sex-str)
-     :age  (safe-parse-int age-str)}))
+  (let [[_ raw-name age-str sex-str] row
+        name (translate-name raw-name)]
+    (cond-> {:name name
+             :sex  (get-sex-from-string sex-str)
+             :age  (safe-parse-int age-str)}
+      (foreign-name? name) (assoc :foreign true))))
 
 (def parse-date c/from-string)
 
@@ -164,45 +207,12 @@
        (sort-by :points-scored >)
        vec))
 
-(defn process-lines
-  "Applies f to each non-blank, non-comment line.
-   f receives the trimmed line as string."
-  [filepath f]
-  (with-open [rdr (io/reader filepath)]
-    (->> (line-seq rdr)
-         (remove #(or (str/blank? %) (str/starts-with? % "#")))
-         (map f)
-         doall)))                                           ; force realization before closing file
-
-(defn name-translator-factory []
-  (let [rules (process-lines "TowerRunningRaceData/translate.dat"
-                             (fn [line]
-                               (let [[pattern name] (map str/trim (str/split line #"," 2))]
-                                 [(re-pattern pattern) name])))]
-    (fn [athlete]
-      (let [name (:name athlete)]
-        (or (some (fn [[re repl]]
-                    (when (re-matches re name)
-                      (assoc athlete :name repl)))
-                  rules)
-            athlete)))))
-
 (def one-year-ago
   (t/minus (t/now) (t/years 1)))
 
 (defn recent-enough? [race-date]
   (t/after? race-date one-year-ago))
 
-(defn foreign-marker-factory
-  "Reads TowerRunningRaceData/foreign.dat and returns a function that
-   adds :foreign true to athletes whose :name exactly matches a line in the file."
-  []
-  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
-                                          (fn [line] (str/upper-case (str/trim line)))))]
-    (fn [athlete]
-      (if (contains? foreign-names (:name athlete))
-        (assoc athlete :foreign true)
-        athlete))))
 
 (defn write-header
   "Write the HTML header for the pages.  Separate functon"
@@ -281,7 +291,6 @@
 
 (defn read-json-race
   "Given a JSON file, read it into a race result.  Much simpler than the CSV reads"
-  ; todo: is this doing the name translation and tagging of foreigners?
   [filename filter-date]
   (with-open [rdr (io/reader filename)]
     (let [header-line (.readLine rdr)
@@ -289,6 +298,7 @@
       (when (filter-date (:date header))
         (->>
           (json/read rdr :key-fn keyword :value-fn value-fn)
+          (map normalize-athlete)
           (dedupe-separate header))))))
 
 (defn read-race
@@ -299,8 +309,6 @@
     :else (throw (ex-info "Unsupported file type. Only .csv and .json are supported."
                           {:filename filename}))))
 
-(def update-athlete-name-and-foreign (comp (foreign-marker-factory) (name-translator-factory)))
-
 (defn- compute-sex-results
   "Build the athlete result sheet for one sex from race maps.
    If include-foreign? is false, race scoring is recomputed after foreign athletes are removed."
@@ -309,7 +317,6 @@
        (mapcat (fn [race]
                  (let [header (:header race)
                        race-athletes (->> (sex race)
-                                          (map update-athlete-name-and-foreign)
                                           (filter #(or include-foreign? (not (:foreign %)))))]
                    (add-scores-and-rank race-athletes header))))
        (group-by :name)
