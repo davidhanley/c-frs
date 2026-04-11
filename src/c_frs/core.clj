@@ -74,13 +74,13 @@
   [athletes header]
   (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
 
-(defn dedupe-separate-and-score
-  "Dedupe the athletes, separate by gender, and add scores & ranks."
+(defn dedupe-separate
+  "Dedupe athletes, separate by gender, and keep race results unscored."
   [header athletes]
   (let [{:keys [male female]} (group-by :sex (dedupe-athletes athletes))]
     {:header header
-     :male   (vec (add-scores-and-rank male header))
-     :female (vec (add-scores-and-rank female header))}))
+     :male   (vec male)
+     :female (vec female)}))
 
 (defn get-race-from-csv-strings
   "Given a sequence of string, parse a race from that. The structure of a race is all the athletes who competed.
@@ -92,7 +92,7 @@
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})
         ]
     (when (and points date (date-filter date))
-      (dedupe-separate-and-score header (map athlete-from-row rest)))))
+      (dedupe-separate header (map athlete-from-row rest)))))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
@@ -289,7 +289,7 @@
       (when (filter-date (:date header))
         (->>
           (json/read rdr :key-fn keyword :value-fn value-fn)
-          (dedupe-separate-and-score header))))))
+          (dedupe-separate header))))))
 
 (defn read-race
   [filename keep-race?]
@@ -302,11 +302,16 @@
 (def update-athlete-name-and-foreign (comp (foreign-marker-factory) (name-translator-factory)))
 
 (defn- compute-sex-results
-  "Build the athlete result sheet for one sex from race maps."
-  [races sex]
+  "Build the athlete result sheet for one sex from race maps.
+   If include-foreign? is false, race scoring is recomputed after foreign athletes are removed."
+  [races sex include-foreign?]
   (->> races
-       (mapcat sex)
-       (map update-athlete-name-and-foreign)
+       (mapcat (fn [race]
+                 (let [header (:header race)
+                       race-athletes (->> (sex race)
+                                          (map update-athlete-name-and-foreign)
+                                          (filter #(or include-foreign? (not (:foreign %)))))]
+                   (add-scores-and-rank race-athletes header))))
        (group-by :name)
        (mapcat rest)
        (mapcat partition-athlete)
@@ -314,13 +319,15 @@
        (map create-athlete-row)
        (vec)))
 
-(defn compute-overall-result-sheet []
-  (let [races (->>
-                (scan-directories)
-                (keep #(read-race % recent-enough?))
-                (write-races-considered))]
-    {:male   (compute-sex-results races :male)
-     :female (compute-sex-results races :female)}))
+(defn- load-recent-races []
+  (->>
+    (scan-directories)
+    (keep #(read-race % recent-enough?))
+    (write-races-considered)))
+
+(defn- compute-overall-result-sheet-from-races [races include-foreign?]
+  {:male   (compute-sex-results races :male include-foreign?)
+   :female (compute-sex-results races :female include-foreign?)})
 
 (defn format-points [points]
   (format "%.2f" (double points)))
@@ -419,14 +426,14 @@
 
 (defn -main
   [& args]
-  (let [overall-results (compute-overall-result-sheet)]
+  (let [races (load-recent-races)
+        results-by-mode
+        {true  (compute-overall-result-sheet-from-races races true)
+         false (compute-overall-result-sheet-from-races races false)}]
     (doseq [sex [:male :female]
             foreign? [true false]]
-      (let [athletes (get overall-results sex)
-            filtered-athletes (if foreign?
-                                athletes
-                                (remove :foreign athletes))
-            sorted (sort-by :total > filtered-athletes)]
+      (let [athletes (get-in results-by-mode [foreign? sex])
+            sorted (sort-by :total > athletes)]
         (print-to-file sorted sex nil foreign?)
         (dorun
           (map (fn [range]

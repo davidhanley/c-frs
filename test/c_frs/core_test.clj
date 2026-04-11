@@ -407,3 +407,22 @@
       (is (nil? athletes))
       ))
   )
+
+(deftest us-only-scoring-reranks-after-foreign-removal
+  (testing "US-only scoring recomputes rank/points within each race"
+    (let [race-data [{:header {:race-name "TEST RACE" :race-points 150 :date (c/from-string "2026-01-01")}
+                      :male   [{:name "FOREIGN WINNER" :sex :male :foreign true}
+                               {:name "TOP AMERICAN" :sex :male}
+                               {:name "SECOND AMERICAN" :sex :male}]
+                      :female []}]]
+      (with-redefs [update-athlete-name-and-foreign identity]
+        (let [all-results (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data true))
+              us-results  (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data false))
+              all-top-us  (first (filter #(= "TOP AMERICAN" (:name %)) all-results))
+              us-top-us   (first (filter #(= "TOP AMERICAN" (:name %)) us-results))
+              all-event   (first (:events all-top-us))
+              us-event    (first (:events us-top-us))]
+          (is (= 125 (:points-scored all-event)) "Second overall in all-country scoring")
+          (is (= 2 (:overall-rank all-event)))
+          (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
+          (is (= 1 (:overall-rank us-event))))))))
