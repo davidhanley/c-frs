@@ -37,16 +37,18 @@
   "Applies f to each non-blank, non-comment line.
    f receives the trimmed line as string."
   [filepath f]
-  (with-open [rdr (io/reader filepath)]
-    (->> (line-seq rdr)
-         (remove #(or (str/blank? %) (str/starts-with? % "#")))
-         (map f)
-         doall)))                                           ; force realization before closing file
+   (with-open [rdr (io/reader filepath)]
+     (->> (line-seq rdr)
+          (map str/trim)
+          (remove #(or (str/blank? %) (str/starts-with? % "#")))
+          (map str/upper-case)
+          (map f)
+          doall)))                                         ; force realization before closing file
 
 (defn name-translator-factory []
   (let [rules (process-lines "TowerRunningRaceData/translate.dat"
                              (fn [line]
-                               (let [[pattern name] (map str/trim (str/split line #"," 2))]
+                               (let [[pattern name] (str/split line #"\s*,\s*" 2)]
                                  [(re-pattern pattern) name])))]
     (fn [name]
       (or (some (fn [[re repl]]
@@ -59,8 +61,7 @@
   "Reads TowerRunningRaceData/foreign.dat and returns a function that
    returns true when an athlete name exactly matches a line in the file."
   []
-  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat"
-                                          (fn [line] (str/upper-case (str/trim line)))))]
+  (let [foreign-names (set (process-lines "TowerRunningRaceData/foreign.dat" identity))]
     (fn [name]
       (contains? foreign-names name))))
 
@@ -384,7 +385,7 @@
        [:td (or cell "")])]))
 
 (defn print-to-file
-  "Writes athletes to an HTML file as a simple table using Hiccup."
+  "Writes pre-ranked athletes to an HTML file as a simple table using Hiccup."
   [athletes sex age-range foreign?]
   (let [sex-str (name sex)
         age-str (if (vector? age-range)
@@ -417,7 +418,7 @@
                  (for [i (range 1 11)]
                    [:th (str "Event " i)])]]
                [:tbody
-                (for [athlete (add-row-ranks athletes)]
+                (for [athlete athletes]
                   (make-athlete-table-row athlete))]])]
         (.write w html-content)))
     (println "Wrote HTML table to" filename "—" (count athletes) "rows")))
@@ -441,10 +442,10 @@
             foreign? [true false]]
       (let [athletes (get-in results-by-mode [foreign? sex])
             sorted (sort-by :total > athletes)]
-        (print-to-file sorted sex nil foreign?)
+        (print-to-file (add-row-ranks sorted) sex nil foreign?)
         (dorun
           (pmap (fn [range]
-                 (print-to-file (filter-ages sorted range) sex range foreign?))
+                 (print-to-file (add-row-ranks (filter-ages sorted range)) sex range foreign?))
                age-ranges))))))
 
 (defn -main
