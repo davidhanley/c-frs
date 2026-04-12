@@ -35,6 +35,37 @@
       (is (= (:sex ath) :male))
       )))
 
+(deftest test-normalize-athlete
+  (with-redefs [translate-name (fn [name]
+                                 ({"DAVE" "DAVID"
+                                   "ALICE" "ALICIA"}
+                                  name name))
+                foreign-name? (fn [name] (= name "ALICIA"))]
+    (testing "unchanged name and non-foreign"
+      (is (= {:name "BOB" :sex :male :age 42}
+             (normalize-athlete {:name "BOB" :sex :male :age 42}))))
+
+    (testing "renamed but non-foreign"
+      (is (= {:name "DAVID" :sex :male :age 50}
+             (normalize-athlete {:name "DAVE" :sex :male :age 50}))))
+
+    (testing "foreign flag added when translated name matches"
+      (is (= {:name "ALICIA" :sex :female :age 31 :foreign true}
+             (normalize-athlete {:name "ALICE" :sex :female :age 31}))))
+
+    (testing "existing foreign flag is not removed when non-foreign"
+      (is (= {:name "BOB" :sex :male :age 42 :foreign true}
+             (normalize-athlete {:name "BOB" :sex :male :age 42 :foreign true}))))))
+
+(deftest test-process-lines
+  (let [tmp (java.io.File/createTempFile "process-lines" ".dat")]
+    (try
+      (spit tmp "  first  \n\n# comment\n second\n   # indented-comment\nthird\n")
+      (is (= ["FIRST" "SECOND" "THIRD"]
+             (process-lines (.getAbsolutePath tmp) identity)))
+      (finally
+        (.delete tmp)))))
+
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
@@ -66,6 +97,12 @@
                                     :name "DAVID HANLEY"}
                                    {:age  51
                                     :name "DAVID HANLEY"}]])))))
+
+(deftest test-partition-when-edges
+  (testing "empty and singleton"
+    (is (= [] (partition-when ages-compatible? [])))
+    (is (= [[{:name "A" :age 30}]]
+           (partition-when ages-compatible? [{:name "A" :age 30}])))))
 
 
 (deftest test-parse-name-and-category
@@ -212,47 +249,16 @@
   )
 
 (deftest name-translator-test
-  (fn []
+  (with-redefs [process-lines (fn [_ f]
+                                (map f ["DAVE,DAVID"
+                                        "BOB.*,ROBERT"]))]
     (let [translate (name-translator-factory)]
+      (testing "exact and regex matches"
+        (is (= "DAVID" (translate "DAVE")))
+        (is (= "ROBERT" (translate "BOB SMITH"))))
 
-      (testing "exact matches"
-        (is (= "CHERYL LEONARD-SCHNECK"
-               (:name (translate {:name "SHERYL LEONARD SCHNECK"}))))
-        (is (= "CHERYL LEONARD-SCHNECK"
-               (:name (translate {:name "SHERYL LEONARD SCHNEC"}))))
-        (is (= "david hanley"
-               (:name (translate {:name "dave hanley"}))))
-        (is (= "robert klinko"
-               (:name (translate {:name "bob klinko"}))))
-        (is (= "SOH WAI CHING"
-               (:name (translate {:name "WAI CHING SOH"})))))
-
-      (testing "wildcard .* matches"
-        (is (= "madeline fontillas-ronk"
-               (:name (translate {:name "madeline ronk"}))))
-        (is (= "madeline fontillas-ronk"
-               (:name (translate {:name "madeline Xronk"}))))
-        (is (= "Natalie DOOLITTLE-shadel"
-               (:name (translate {:name "Natalie DOOLITTLE anything here"}))))
-        (is (= "MARIA ELISA LOPEZ PIMENTEL"
-               (:name (translate {:name "MARIA ELISA LOPEZ P. whatever"}))))
-        (is (= "ARTURO VELAZQUEZ LEYVA"
-               (:name (translate {:name "ARTURO VELAZQUEZ XYZ"})))))
-
-      (testing "prefix/suffix style matches"
-        (is (= "SHERYL LEONARD-SCHNECK"
-               (:name (translate {:name "SHERYL LEONARD-SC extra stuff"})))))
-
-      (testing "no match → name unchanged"
-        (is (= "unknown person"
-               (:name (translate {:name "unknown person"}))))
-        (is (= "Dave Hanley"                                ; different case → no match
-               (:name (translate {:name "Dave Hanley"})))))
-
-      (testing "edge cases"
-        (is (= {:name nil} (translate {:name nil})))
-        (is (= {} (translate {})))
-        (is (= {:other :data} (translate {:other :data})))))))
+      (testing "no match passes through"
+        (is (= "ALICE" (translate "ALICE")))))))
 
 (def sample-athletes
   [{:name "A" :age 18}
@@ -415,14 +421,13 @@
                                {:name "TOP AMERICAN" :sex :male}
                                {:name "SECOND AMERICAN" :sex :male}]
                       :female []}]]
-      (with-redefs [update-athlete-name-and-foreign identity]
-        (let [all-results (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data true))
-              us-results  (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data false))
-              all-top-us  (first (filter #(= "TOP AMERICAN" (:name %)) all-results))
-              us-top-us   (first (filter #(= "TOP AMERICAN" (:name %)) us-results))
-              all-event   (first (:events all-top-us))
-              us-event    (first (:events us-top-us))]
-          (is (= 125 (:points-scored all-event)) "Second overall in all-country scoring")
-          (is (= 2 (:overall-rank all-event)))
-          (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
-          (is (= 1 (:overall-rank us-event))))))))
+      (let [all-results (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data true))
+            us-results  (:male (#'c-frs.core/compute-overall-result-sheet-from-races race-data false))
+            all-top-us  (first (filter #(= "TOP AMERICAN" (:name %)) all-results))
+            us-top-us   (first (filter #(= "TOP AMERICAN" (:name %)) us-results))
+            all-event   (first (:events all-top-us))
+            us-event    (first (:events us-top-us))]
+        (is (= 125 (:points-scored all-event)) "Second overall in all-country scoring")
+        (is (= 2 (:overall-rank all-event)))
+        (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
+        (is (= 1 (:overall-rank us-event)))))))
