@@ -164,14 +164,16 @@
 (defn partition-when
   "Like partition-by but decides split based on consecutive pairs"
   [should-continue? coll]
-  (reduce
-    (fn [acc x]
-      (if (or (empty? acc)
-              (should-continue? (last (last acc)) x))
-        (update acc (dec (count acc)) conj x)
-        (conj acc [x])))
-    [[(first coll)]]
-    (next coll)))
+  (if (seq coll)
+    (reduce
+      (fn [acc x]
+        (if (or (empty? acc)
+                (should-continue? (last (last acc)) x))
+          (update acc (dec (count acc)) conj x)
+          (conj acc [x])))
+      [[(first coll)]]
+      (next coll))
+    []))
 
 (defn ages-compatible?
   "See if two athletes might be the same person based on age"
