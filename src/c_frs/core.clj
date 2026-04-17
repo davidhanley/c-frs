@@ -294,6 +294,7 @@
 (defn read-json-race
   "Given a JSON file, read it into a race result.  Much simpler than the CSV reads"
   [filename filter-date]
+      (println "reading " filename)
   (with-open [rdr (io/reader filename)]
     (let [header-line (.readLine rdr)
           header (conj  (json/read-str header-line :key-fn keyword :value-fn value-fn) {:url (to-url filename)})]
