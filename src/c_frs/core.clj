@@ -98,29 +98,35 @@
   (str "https://github.com/davidhanley/TowerRunningRaceData/blob/main/"
        (last (str/split filename #"/"))))
 
-(defn dedupe-athletes
-  "Returns a sequence of athletes with duplicate names removed.
+(defn distinct-by-key
+  "Returns a sequence with only the first item for each key value.
+   Preserves input order."
+  [keyfn coll]
+  (let [seen (volatile! #{})]
+    (->> coll
+         (keep (fn [item]
+                 (let [k (keyfn item)]
+                   (when-not (contains? @seen k)
+                     (vswap! seen conj k)
+                     item))))
+         vec)))
+
+
+(defn distinct-athletes
+  "Returns a sequence of athletes with distinct names.
    Keeps the first occurrence of each name (preserves original order)."
   [athletes]
-  (:result (reduce (fn [acc athlete]
-                     (let [name (:name athlete)]
-                       (if (contains? (:seen acc) name)
-                         acc
-                         (-> acc
-                             (update :result conj athlete)
-                             (update :seen conj name)))))
-                   {:result [] :seen #{}}
-                   athletes)))
+  (distinct-by-key :name athletes))
 
 (defn add-scores-and-rank
   "Given a sequence of athletes and the race header, add the header, and the score and rank for each athlete"
   [athletes header]
   (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
 
-(defn dedupe-separate
-  "Dedupe athletes, separate by gender, and keep race results unscored."
+(defn distinct-separate
+  "Keep athletes distinct by name, separate by gender, and keep race results unscored."
   [header athletes]
-  (let [{:keys [male female]} (group-by :sex (dedupe-athletes athletes))]
+  (let [{:keys [male female]} (group-by :sex (distinct-athletes athletes))]
     {:header header
      :male   (vec male)
      :female (vec female)}))
@@ -135,7 +141,7 @@
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})
         ]
     (when (and points date (date-filter date))
-      (dedupe-separate header (map athlete-from-row rest)))))
+      (distinct-separate header (map athlete-from-row rest)))))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
@@ -199,7 +205,7 @@
           :age    (some->> (keep :age races) not-empty (apply max))
           :events races}))
 
-(defn deduplicate-by-race-max-points
+(defn distinct-by-race-max-points
   "Returns a vector of unique race results (one per :race-name with the highest :points),
    sorted by points in descending order (best performance first)."
   [results]
@@ -302,7 +308,7 @@
         (->>
           (json/read rdr :key-fn keyword :value-fn value-fn)
           (map normalize-athlete)
-          (dedupe-separate header))))))
+          (distinct-separate header))))))
 
 (defn read-race
   [filename keep-race?]
@@ -325,7 +331,7 @@
        (group-by :name)
        (mapcat rest)
        (mapcat partition-athlete)
-       (map deduplicate-by-race-max-points)
+       (map distinct-by-race-max-points)
        (map create-athlete-row)
        (vec)))
 

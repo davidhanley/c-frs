@@ -134,10 +134,10 @@
    :age           age
    :overall-rank  overall-rank})
 
-; deduplicate an athlete's races, sorting them by highest to lowest points.
+; keep an athlete's race results distinct by race name, sorted by highest to lowest points.
 
-(deftest test-deduplicate-by-race-max-points
-  (testing "Basic deduplication - keeps highest points per race"
+(deftest test-distinct-by-race-max-points
+  (testing "Basic distinct-by-race behavior - keeps highest points per race"
     (let [input [(race "2022 T2T TAMPA" 150 1665273600000 :age 41)
                  (race "2022 T2T TAMPA" 120 1665273700000 :age 41)
                  (race "SCALE THE STRAT" 250 1646611200000 :age 41)
@@ -145,32 +145,32 @@
           expected [{:header {:race-name "SCALE THE STRAT" :date 1646611200000} :points-scored 250 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
                     {:header {:race-name "2022 T2T TAMPA" :date 1665273600000} :points-scored 150 :age 41 :sex :female :name "JILL PAHA" :overall-rank nil}
                     ]]
-      (is (= expected (deduplicate-by-race-max-points input)))))
+      (is (= expected (distinct-by-race-max-points input)))))
 
   (testing "Preserves other fields from the winning entry"
     (let [input [(race "WILLIS" 200 1635292800000 :age 40 :overall-rank 1)
                  (race "WILLIS" 180 1635292900000 :age 41 :overall-rank 3)
                  (race "WILLIS" 500/3 1635293000000 :age nil :overall-rank 2)] ;; 166.666... < 200
           expected [{:header {:race-name "WILLIS" :date 1635292800000} :points-scored 200 :age 40 :sex :female :name "JILL PAHA" :overall-rank 1}]]
-      (is (= expected (deduplicate-by-race-max-points input)))))
+      (is (= expected (distinct-by-race-max-points input)))))
 
   (testing "Handles ratios correctly (max-key compares them numerically)"
     (let [input [(race "2021 WILLIS" 500/3 1635292800000)   ;; ≈166.67
                  (race "2021 WILLIS" 150 1635292900000)
                  (race "2021 WILLIS" 200 1635293000000)]
           expected [{:header {:race-name "2021 WILLIS" :date 1635293000000} :points-scored 200 :sex :female :name "JILL PAHA" :age nil :overall-rank nil}]]
-      (is (= expected (deduplicate-by-race-max-points input)))))
+      (is (= expected (distinct-by-race-max-points input)))))
 
   (testing "Empty input and single entry"
-    (is (= [] (deduplicate-by-race-max-points [])))
+    (is (= [] (distinct-by-race-max-points [])))
     (let [single [(race "ONLY ONE" 250 1665014400000 :overall-rank 1)]]
-      (is (= single (deduplicate-by-race-max-points single)))))
+      (is (= single (distinct-by-race-max-points single)))))
 
   (testing "No duplicates → returns input sorted by points descending"
     (let [input [(race "RACE B" 200 1)
                  (race "RACE C" 150 2)
                  (race "RACE A" 100 3)]
-          result (deduplicate-by-race-max-points input)]
+          result (distinct-by-race-max-points input)]
       (is (= input result))))
 
   (testing "Realistic multi-duplicate case from your style"
@@ -182,7 +182,7 @@
           expected [{:header {:race-name "SCALE THE STRAT" :date 1646611200000} :points-scored 250 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
                     {:header {:race-name "2022 T2T TAMPA" :date 1665273600000} :points-scored 150 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}
                     {:header {:race-name "2022 SOUTHFIELD SINGLE CLIMB" :date 1668124800000} :points-scored 50 :sex :female :name "JILL PAHA" :overall-rank nil :age nil}]]
-      (is (= expected (deduplicate-by-race-max-points input))))))
+      (is (= expected (distinct-by-race-max-points input))))))
 
 
 ;; Helper to create sample race maps
@@ -372,7 +372,7 @@
     (testing "Empty list → empty result"
       (is (= [] (add-row-ranks []))))))
 
-(deftest test-dedupe-athletes
+(deftest test-distinct-athletes
   (testing "keeps first occurrence of each name and preserves order"
     (let [athletes [{:name "Alice" :sex :female :age 25 :points-scored 1200}
                     {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
@@ -385,15 +385,15 @@
               {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
               {:name "Charlie" :sex :male :age 28 :points-scored 900}
               {:name "Diana" :sex :female :age 22 :points-scored 1400}]
-             (dedupe-athletes athletes)))))
+             (distinct-athletes athletes)))))
 
   (testing "handles empty list"
-    (is (= [] (dedupe-athletes []))))
+    (is (= [] (distinct-athletes []))))
 
   (testing "handles no duplicates"
     (let [athletes [{:name "Alice" :sex :female}
                     {:name "Bob"   :sex :male}]]
-      (is (= athletes (dedupe-athletes athletes))))))
+      (is (= athletes (distinct-athletes athletes))))))
 
 (deftest test-json-read
   (testing "see if reading a json race works"
