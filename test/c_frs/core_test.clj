@@ -72,7 +72,7 @@
           athlete (first (concat (:male race) (:female race)))
           header (:header race)
           ]
-      (is (= (+ (count (:male race)) (count (:female race))) 1244)) ; went down by 1?
+      (is (= (+ (count (:male race)) (count (:female race))) 1245)) ; same-name athletes with different ages now stay distinct
       (is (= (:race-name header) "2023 HUSTLE UP THE HANCOCK"))
       (is (= (:race-points header) 150))
       )))
@@ -373,16 +373,18 @@
       (is (= [] (add-row-ranks []))))))
 
 (deftest test-distinct-athletes
-  (testing "keeps first occurrence of each name and preserves order"
+  (testing "keeps first occurrence of each name/age pair and preserves order"
     (let [athletes [{:name "Alice" :sex :female :age 25 :points-scored 1200}
                     {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
                     {:name "Alice" :sex :female :age 25 :points-scored 1350}  ; duplicate, should be dropped
+                    {:name "Alice" :sex :female :age 26 :points-scored 1250}  ; same name, different age, should stay
                     {:name "Charlie" :sex :male :age 28 :points-scored 900}
                     {:name "Bob"   :sex :male   :age 30 :points-scored 950}   ; duplicate
                     {:name "Diana" :sex :female :age 22 :points-scored 1400}]]
 
       (is (= [{:name "Alice" :sex :female :age 25 :points-scored 1200}
               {:name "Bob"   :sex :male   :age 30 :points-scored 1100}
+              {:name "Alice" :sex :female :age 26 :points-scored 1250}
               {:name "Charlie" :sex :male :age 28 :points-scored 900}
               {:name "Diana" :sex :female :age 22 :points-scored 1400}]
              (distinct-athletes athletes)))))
@@ -393,7 +395,15 @@
   (testing "handles no duplicates"
     (let [athletes [{:name "Alice" :sex :female}
                     {:name "Bob"   :sex :male}]]
-      (is (= athletes (distinct-athletes athletes))))))
+      (is (= athletes (distinct-athletes athletes)))))
+
+  (testing "nil ages are part of the distinct key"
+    (let [athletes [{:name "Alice" :age nil :sex :female :points-scored 100}
+                    {:name "Alice" :age nil :sex :female :points-scored 200}
+                    {:name "Alice" :age 25  :sex :female :points-scored 300}]]
+      (is (= [{:name "Alice" :age nil :sex :female :points-scored 100}
+              {:name "Alice" :age 25  :sex :female :points-scored 300}]
+             (distinct-athletes athletes))))))
 
 (deftest test-json-read
   (testing "see if reading a json race works"

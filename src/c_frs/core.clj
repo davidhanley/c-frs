@@ -110,10 +110,10 @@
                 item))) coll)))
 
 (defn distinct-athletes
-  "Returns a sequence of athletes with distinct names.
-       Keeps the first occurrence of each name (preserves original order)."
+  "Returns a sequence of athletes distinct by name and age.
+       Keeps the first occurrence of each name/age pair (preserves original order)."
   [athletes]
-  (distinct-by-key :name athletes))
+  (distinct-by-key (juxt :name :age) athletes))
 
 (defn add-scores-and-rank
   "Given a sequence of athletes and the race header, add the header, and the score and rank for each athlete."
@@ -121,7 +121,7 @@
   (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
 
 (defn distinct-separate
-  "Keep athletes distinct by name, separate by gender, and keep race results unscored."
+  "Keep athletes distinct by name and age, separate by gender, and keep race results unscored."
   [header athletes]
   (let [{:keys [male female]} (group-by :sex (distinct-athletes athletes))]
     {:header header
