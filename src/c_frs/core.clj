@@ -69,12 +69,12 @@
 (def foreign-name? (foreign-marker-factory))
 
 (defn normalize-athlete [athlete]
-  (let [old-name (:name athlete)
-        new-name (translate-name old-name)
-        foreign? (foreign-name? new-name)]
-    (cond-> athlete
-      (not= old-name new-name) (assoc :name new-name)
-      foreign? (assoc :foreign true))))
+  (when-let [old-name (not-empty (:name athlete))]
+    (let [new-name (translate-name old-name)]
+      (cond-> athlete
+              (not= old-name new-name) (assoc :name new-name)
+              (foreign-name? new-name) (assoc :foreign true)))))
+
 
 (defn athlete-from-row
   "Given an array of strings from the CSV row, make an athlete struct."
@@ -103,11 +103,11 @@
        Preserves input order."
   [keyfn coll]
   (let [seen (volatile! #{})]
-    (keep (fn [item]
+    (filter (fn [item]
             (let [k (keyfn item)]
               (when-not (contains? @seen k)
                 (vswap! seen conj k)
-                item))) coll)))
+                true))) coll)))
 
 (defn distinct-athletes
   "Returns a sequence of athletes distinct by name and age.
@@ -118,15 +118,16 @@
 (defn add-scores-and-rank
   "Given a sequence of athletes and the race header, add the header, and the score and rank for each athlete."
   [athletes header]
-  (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3)) athletes (get-scores-list (:race-points header)) (range)))
+  (map #(assoc %1 :header header :points-scored %2 :overall-rank (inc %3))
+       athletes (get-scores-list (:race-points header)) (range)))
 
 (defn distinct-separate
   "Keep athletes distinct by name and age, separate by gender, and keep race results unscored."
   [header athletes]
   (let [{:keys [male female]} (group-by :sex (distinct-athletes athletes))]
     {:header header
-     :male   (vec male)
-     :female (vec female)}))
+     :male   male
+     :female female}))
 
 (defn get-race-from-csv-strings
   "Given a sequence of strings, parse a race from that. The structure of a race is all the athletes who competed.
@@ -137,7 +138,7 @@
         points (safe-parse-int (first pointsstr))
         header (conj (parse-name-and-category (first namestr)) {:date date :race-points points :url (to-url filename)})]
     (when (and points date (date-filter date))
-      (distinct-separate header (map athlete-from-row rest)))))
+      (distinct-separate header (keep athlete-from-row rest)))))
 
 (def trim-and-upper (comp str/trim str/upper-case))
 (defn clean-line [line] (map trim-and-upper line))
@@ -277,8 +278,7 @@
                     [:td date-str]
                     [:td.points points]]))]])]
         (.write w html-content)))
-    (println "Wrote races-considered.html with" (count sorted-results) "races"))
-  races)
+    (println "Wrote races-considered.html with" (count sorted-results) "races")))
 
 (def transformers
   {:date   c/from-string
@@ -300,7 +300,7 @@
       (when (filter-date (:date header))
         (->>
          (json/read rdr :key-fn keyword :value-fn value-fn)
-         (map normalize-athlete)
+         (keep normalize-athlete)
          (distinct-separate header))))))
 
 (defn read-race
@@ -329,10 +329,9 @@
        (vec)))
 
 (defn- load-recent-races []
-  (->>
-   (scan-directories)
-   (keep #(read-race % recent-enough?))
-   (write-races-considered)))
+  (doto (->> (scan-directories)
+             (keep #(read-race % recent-enough?)))
+    write-races-considered))
 
 (defn- compute-overall-result-sheet-from-races [races include-foreign?]
   {:male   (compute-sex-results races :male include-foreign?)
@@ -341,6 +340,8 @@
 (defn format-points [points]
   (format "%.2f" (double points)))
 
+(defn threaded-map [process-element &rest colls]
+  )
 (defn add-row-ranks
   "Take the sequence of sorted athletes, break it up into tie groups and alternate
       colors for the groups to make them more clearly visible."
@@ -445,7 +446,7 @@
             sorted (sort-by :total > athletes)]
         (print-to-file (add-row-ranks sorted) sex nil foreign?)
         (dorun
-         (pmap (fn [range]
+         (map (fn [range]
                  (print-to-file (add-row-ranks (filter-ages sorted range)) sex range foreign?))
                age-ranges))))))
 

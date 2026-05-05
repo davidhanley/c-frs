@@ -69,7 +69,6 @@
 (deftest test-read-race
   (testing "see if we read a race sanely"
     (let [race (read-csv-race "TowerRunningRaceData/2023-hustle-up-the-hancock.csv" (fn [_] true))
-          athlete (first (concat (:male race) (:female race)))
           header (:header race)
           ]
       (is (= (+ (count (:male race)) (count (:female race))) 1245)) ; same-name athletes with different ages now stay distinct
@@ -441,3 +440,57 @@
         (is (= 2 (:overall-rank all-event)))
         (is (= 150 (:points-scored us-event)) "Promoted to first in US-only scoring")
         (is (= 1 (:overall-rank us-event)))))))
+
+(deftest distinct-by-key-test
+  (testing "keeps first occurrence for each key and preserves input order"
+    (let [input [{:id 1 :name "A"}
+                 {:id 2 :name "B"}
+                 {:id 1 :name "A2"}   ; duplicate id, should drop
+                 {:id 3 :name "C"}
+                 {:id 2 :name "B2"}]  ; duplicate id, should drop
+          result (distinct-by-key :id input)]
+      (is (= [{:id 1 :name "A"}
+              {:id 2 :name "B"}
+              {:id 3 :name "C"}]
+             result))))
+
+  (testing "empty input returns empty sequence"
+    (is (= [] (distinct-by-key :id []))))
+
+  (testing "nil keys are treated like any other key (first nil kept)"
+    (let [input [{:id nil :name "Unknown-1"}
+                 {:id 1   :name "A"}
+                 {:id nil :name "Unknown-2"}
+                 {:id 2   :name "B"}]
+          result (distinct-by-key :id input)]
+      (is (= [{:id nil :name "Unknown-1"}
+              {:id 1   :name "A"}
+              {:id 2   :name "B"}]
+             result))))
+
+  (testing "supports composite keys"
+    (let [input [{:name "Alice" :age 25 :score 10}
+                 {:name "Alice" :age 25 :score 20} ; duplicate composite key
+                 {:name "Alice" :age 26 :score 30}
+                 {:name "Bob"   :age 25 :score 40}]
+          result (distinct-by-key (juxt :name :age) input)]
+      (is (= [{:name "Alice" :age 25 :score 10}
+              {:name "Alice" :age 26 :score 30}
+              {:name "Bob"   :age 25 :score 40}]
+             result)))))
+
+(deftest name-translator-nil-input-test
+  (with-redefs [process-lines (fn [_ f]
+                                ;; Any non-empty rules list triggers re-matches
+                                (map f ["DAVE,DAVID" "BOB.*,ROBERT"]))]
+    (let [translate (name-translator-factory)]
+      (testing "nil name does not throw and passes through as nil"
+        (is (nil? (translate nil)))))))
+
+
+(deftest read-json-race-san-fran-does-not-throw-on-missing-or-nil-name
+  (testing "reading 2026-ffa-san-fran.json should not NPE in name translation"
+    (is (some? (read-json-race "TowerRunningRaceData/2026-ffa-san-fran.json" (constantly true))))))
+
+
+

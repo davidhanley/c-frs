@@ -3,7 +3,7 @@ import urllib.error
 import json
 from datetime import datetime
 
-RACE_ID = "56563"
+RACE_ID = "142790"
 
 def fetch_json(url):
     """Helper function to fetch JSON with standard library"""

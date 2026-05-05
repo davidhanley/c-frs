@@ -1,1 +1,7 @@
+cd Tow*
+git add *.csv
+git add *.json
+git commit -m "added rces"
+git push 
+cd ..
 rsync -vvr --delete-before --ignore-errors content root@davidhanley.org:/var/www/towerrunningusa/

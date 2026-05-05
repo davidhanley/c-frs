@@ -21,11 +21,11 @@
     <orderEntry type="library" name="Leiningen: hiccup:2.0.0" level="project" />
     <orderEntry type="library" name="Leiningen: joda-time:2.10" level="project" />
     <orderEntry type="library" name="Leiningen: nrepl:1.0.0" level="project" />
-    <orderEntry type="library" name="Leiningen: org.clojure/clojure:1.11.1" level="project" />
-    <orderEntry type="library" name="Leiningen: org.clojure/core.specs.alpha:0.2.62" level="project" />
+    <orderEntry type="library" name="Leiningen: org.clojure/clojure:1.12.4" level="project" />
+    <orderEntry type="library" name="Leiningen: org.clojure/core.specs.alpha:0.4.74" level="project" />
     <orderEntry type="library" name="Leiningen: org.clojure/data.csv:1.0.1" level="project" />
     <orderEntry type="library" name="Leiningen: org.clojure/data.json:2.5.2" level="project" />
-    <orderEntry type="library" name="Leiningen: org.clojure/spec.alpha:0.3.218" level="project" />
+    <orderEntry type="library" name="Leiningen: org.clojure/spec.alpha:0.5.238" level="project" />
     <orderEntry type="library" name="Leiningen: org.nrepl/incomplete:0.1.0" level="project" />
   </component>
 </module>
